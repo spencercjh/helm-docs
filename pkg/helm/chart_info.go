@@ -1,7 +1,6 @@
 package helm
 
 import (
-	"bufio"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -10,18 +9,24 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/goccy/go-yaml/lexer"
+	"github.com/goccy/go-yaml/token"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 )
 
-var valuesDescriptionRegex = regexp.MustCompile("^\\s*#\\s*(.*)\\s+--\\s*(.*)$")
-var rawDescriptionRegex = regexp.MustCompile("^\\s*#\\s+@raw")
-var commentContinuationRegex = regexp.MustCompile("^\\s*#(\\s?)(.*)$")
-var defaultValueRegex = regexp.MustCompile("^\\s*# @default -- (.*)$")
-var valueTypeRegex = regexp.MustCompile("^\\((.*?)\\)\\s*(.*)$")
-var valueNotationTypeRegex = regexp.MustCompile("^\\s*#\\s+@notationType\\s+--\\s+(.*)$")
-var sectionRegex = regexp.MustCompile("^\\s*# @section -- (.*)$")
+var (
+	valuesDescriptionRegex   = regexp.MustCompile("^\\s*#\\s*(.*)\\s+--\\s*(.*)$")
+	rawDescriptionRegex      = regexp.MustCompile("^\\s*#\\s+@raw")
+	commentContinuationRegex = regexp.MustCompile("^\\s*#(\\s?)(.*)$")
+	defaultValueRegex        = regexp.MustCompile("^\\s*# @default -- (.*)$")
+	valueTypeRegex           = regexp.MustCompile("^\\((.*?)\\)\\s*(.*)$")
+	valueNotationTypeRegex   = regexp.MustCompile("^\\s*#\\s+@notationType\\s+--\\s+(.*)$")
+	sectionRegex             = regexp.MustCompile("^\\s*# @section -- (.*)$")
+	extraRegex               = regexp.MustCompile("^\\s*# @extra -- (.*)$")
+	extraContinuationRegex   = regexp.MustCompile("^\\s*# ?(.*)$")
+)
 
 type ChartMetaMaintainer struct {
 	Email string
@@ -70,6 +75,7 @@ type ChartDocumentationInfo struct {
 	ChartDirectory          string
 	ChartValues             *yaml.Node
 	ChartValuesDescriptions map[string]ChartValueDescription
+	Extras                  map[string]string
 }
 
 type ChartValuesDocumentationParsingConfig struct {
@@ -169,20 +175,6 @@ func removeIgnored(rootNode *yaml.Node, parentKind yaml.Kind) {
 	rootNode.Content = newContent
 }
 
-func parseChartValuesFile(chartDirectory string) (yaml.Node, error) {
-	valuesPath := filepath.Join(chartDirectory, viper.GetString("values-file"))
-	yamlFileContents, err := getYamlFileContents(valuesPath)
-
-	var values yaml.Node
-	if isErrorInReadingNecessaryFile(valuesPath, err) {
-		return values, err
-	}
-
-	err = yaml.Unmarshal(yamlFileContents, &values)
-	removeIgnored(&values, values.Kind)
-	return values, err
-}
-
 func checkDocumentation(rootNode *yaml.Node, comments map[string]ChartValueDescription, config ChartValuesDocumentationParsingConfig) error {
 	if len(rootNode.Content) == 0 {
 		return nil
@@ -236,25 +228,63 @@ func collectValuesWithoutDoc(node *yaml.Node, comments map[string]ChartValueDesc
 	return valuesWithoutDocs
 }
 
-func parseChartValuesFileComments(chartDirectory string, values *yaml.Node, lintingConfig ChartValuesDocumentationParsingConfig) (map[string]ChartValueDescription, error) {
-	valuesPath := filepath.Join(chartDirectory, viper.GetString("values-file"))
-	valuesFile, err := os.Open(valuesPath)
+// yaml.Node attaches comments to nearby nodes and drops comment-only documents.
+// Token positions let standalone and duplicate sections follow source order.
+func yamlCommentTextByLine(source string) map[int]string {
+	comments := make(map[int]string)
+	for _, t := range lexer.Tokenize(source) {
+		if t.Type == token.CommentType {
+			comments[t.Position.Line] = "#" + t.Value
+		}
+	}
+	return comments
+}
 
-	if isErrorInReadingNecessaryFile(valuesPath, err) {
-		return map[string]ChartValueDescription{}, err
+func parseChartValuesFileComments(source string, values *yaml.Node, lintingConfig ChartValuesDocumentationParsingConfig) (map[string]ChartValueDescription, map[string]string, error) {
+	var yamlComments map[int]string
+	if strings.Contains(source, "# @extra -- ") {
+		yamlComments = yamlCommentTextByLine(source)
 	}
 
-	defer valuesFile.Close()
-
+	// Extra sections are collected in their own buffer, so an @extra block that
+	// follows a value description (and its @default, @section, ...) doesn't
+	// clobber the comment lines of that value.
+	extras := make(map[string]string)
+	currentExtra := ""
+	extraLines := make([]string, 0)
 	keyToDescriptions := make(map[string]ChartValueDescription)
-	scanner := bufio.NewScanner(valuesFile)
 	foundValuesComment := false
 	commentLines := make([]string, 0)
-	currentLineIdx := -1
+	lineNumber := 0
 
-	for scanner.Scan() {
-		currentLineIdx++
-		currentLine := scanner.Text()
+	for line := range strings.Lines(source) {
+		lineNumber++
+		currentLine := strings.TrimSuffix(line, "\n")
+		// Inline comments and scalar content both end a standalone comment block.
+		if yamlComments != nil && strings.TrimLeft(currentLine, " \t") != yamlComments[lineNumber] {
+			currentLine = ""
+		}
+
+		if match := extraRegex.FindStringSubmatch(currentLine); len(match) == 2 && match[1] != "" {
+			if currentExtra != "" {
+				extras[currentExtra] = strings.Join(extraLines, "\n")
+			}
+			currentExtra = match[1]
+			extraLines = make([]string, 0)
+			continue
+		}
+
+		if currentExtra != "" {
+			if match := extraContinuationRegex.FindStringSubmatch(currentLine); len(match) > 1 {
+				extraLines = append(extraLines, match[1])
+				continue
+			}
+			// A non-comment line ends the extra section; the line itself is
+			// processed below (e.g. the value the preceding description belongs to).
+			extras[currentExtra] = strings.Join(extraLines, "\n")
+			extraLines = make([]string, 0)
+			currentExtra = ""
+		}
 
 		// If we've not yet found a values comment with a key name, try and find one on each line
 		if !foundValuesComment {
@@ -293,13 +323,18 @@ func parseChartValuesFileComments(chartDirectory string, values *yaml.Node, lint
 		commentLines = make([]string, 0)
 		foundValuesComment = false
 	}
+
+	if currentExtra != "" {
+		extras[currentExtra] = strings.Join(extraLines, "\n")
+	}
+
 	if lintingConfig.StrictMode {
 		err := checkDocumentation(values, keyToDescriptions, lintingConfig)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return keyToDescriptions, nil
+	return keyToDescriptions, extras, nil
 }
 
 func ParseChartInformation(chartDirectory string, documentationParsingConfig ChartValuesDocumentationParsingConfig) (ChartDocumentationInfo, error) {
@@ -317,13 +352,18 @@ func ParseChartInformation(chartDirectory string, documentationParsingConfig Cha
 		return chartDocInfo, err
 	}
 
-	chartValues, err := parseChartValuesFile(chartDirectory)
-	if err != nil {
+	valuesPath := filepath.Join(chartDirectory, viper.GetString("values-file"))
+	contents, err := getYamlFileContents(valuesPath)
+	if isErrorInReadingNecessaryFile(valuesPath, err) {
 		return chartDocInfo, err
 	}
-
+	var chartValues yaml.Node
+	if err := yaml.Unmarshal(contents, &chartValues); err != nil {
+		return chartDocInfo, err
+	}
+	removeIgnored(&chartValues, chartValues.Kind)
 	chartDocInfo.ChartValues = &chartValues
-	chartDocInfo.ChartValuesDescriptions, err = parseChartValuesFileComments(chartDirectory, &chartValues, documentationParsingConfig)
+	chartDocInfo.ChartValuesDescriptions, chartDocInfo.Extras, err = parseChartValuesFileComments(string(contents), &chartValues, documentationParsingConfig)
 	if err != nil {
 		return chartDocInfo, err
 	}

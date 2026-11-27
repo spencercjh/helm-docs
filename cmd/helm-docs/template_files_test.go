@@ -17,8 +17,8 @@ func TestMultiFileTemplateCommand(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name, first, second, want string
-		wantError                 bool
+		name, first, second, values, want string
+		wantError                         bool
 	}{
 		{
 			name:   "shared body scope",
@@ -27,10 +27,11 @@ func TestMultiFileTemplateCommand(t *testing.T) {
 			want:   "First from both\n",
 		},
 		{
-			name:   "named override",
-			first:  "{{ block \"title\" . }}Fallback{{ end }}\n",
+			name:   "named override with a standalone section",
+			first:  "{{ block \"title\" . }}Fallback{{ end }}\n{{ template \"chart.extras\" . }}",
 			second: `{{ define "title" }}Override{{ end }}`,
-			want:   "Override\n",
+			values: "# @extra -- Upgrading\n# Follow the version policy.\n",
+			want:   "Override\n\n### Upgrading\nFollow the version policy.\n",
 		},
 		{
 			name:      "unterminated named template",
@@ -42,9 +43,13 @@ func TestMultiFileTemplateCommand(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
+			values := tc.values
+			if values == "" {
+				values = "{}\n"
+			}
 			for name, content := range map[string]string{
 				"Chart.yaml":    "apiVersion: v2\nname: templates\nversion: 1.0.0\n",
-				"values.yaml":   "{}\n",
+				"values.yaml":   values,
 				"first.gotmpl":  tc.first,
 				"second.gotmpl": tc.second,
 				"README.md":     "previous README\n",

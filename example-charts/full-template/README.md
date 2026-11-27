@@ -126,6 +126,8 @@ Kubernetes: `<=1.18`
 
 ## Values
 
+## `chart.extras`
+
 ## `chart.valuesTable`
 
 | Key | Type | Default | Description |

@@ -32,6 +32,8 @@ const defaultDocumentationTemplate = `{{ template "chart.header" . }}
 
 {{ template "chart.valuesSectionMd" . }}
 
+{{ template "chart.extras" . }}
+
 {{- if not .SkipVersionFooter }}
 {{ template "helm-docs.versionFooter" . }}
 {{- end }}
@@ -386,6 +388,18 @@ func getValuesTableTemplates() string {
 	return valuesSectionBuilder.String()
 }
 
+func getExtraTemplates() string {
+	extrasBuilder := strings.Builder{}
+	extrasBuilder.WriteString(`{{ define "chart.extras" }}`)
+	extrasBuilder.WriteString("{{ range .Extras }}\n")
+	extrasBuilder.WriteString("### {{ .Title }}\n")
+	extrasBuilder.WriteString("{{ .MarkDown }}\n\n")
+	extrasBuilder.WriteString("{{ end }}")
+	extrasBuilder.WriteString("{{ end }}")
+
+	return extrasBuilder.String()
+}
+
 func getHelmDocsVersionTemplates() string {
 	versionSectionBuilder := strings.Builder{}
 	versionSectionBuilder.WriteString(`{{ define "helm-docs.version" }}{{ if .HelmDocsVersion }}{{ .HelmDocsVersion }}{{ end }}{{ end }}`)
@@ -462,6 +476,7 @@ func builtInDocumentationTemplates(badgeStyle string) []string {
 		getHomepageTemplate(),
 		getMaintainersTemplate(),
 		getHelmDocsVersionTemplates(),
+		getExtraTemplates(),
 	}
 }
 
