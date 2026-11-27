@@ -31,4 +31,3 @@ A simple wrapper around the stable/nginx-ingress chart that adds a few of our co
 | controller.image.repository | string | `"nginx-ingress-controller"` | The repository of the controller |
 | controller.image.tag | string | `"18.0831"` | The tag of the image of the controller |
 | controller.name | string | `"controller"` | The name of the controller |
-

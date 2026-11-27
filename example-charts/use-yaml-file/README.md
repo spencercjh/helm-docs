@@ -43,4 +43,3 @@ $ helm install my-release foo-bar/no-values
 | volumeSnapshotClass.azure.parameters | object | `{}` |  |
 | volumeSnapshotClass.local.parameters | object | `{}` |  |
 | volumeSnapshotClass.mask-data.parameters.resourceGroup | string | `"rg-mask-data"` |  |
-

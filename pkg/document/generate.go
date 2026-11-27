@@ -81,7 +81,10 @@ func applyMarkDownFormat(output bytes.Buffer) bytes.Buffer {
 
 	// End the file with a single trailing newline so it doesn't fight tools
 	// that enforce that (for example pre-commit's end-of-file-fixer).
-	outputString = strings.TrimRight(outputString, "\n") + "\n"
+	outputString = strings.TrimRight(outputString, "\n")
+	if outputString != "" {
+		outputString += "\n"
+	}
 
 	output.Reset()
 	output.WriteString(outputString)

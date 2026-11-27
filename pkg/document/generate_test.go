@@ -14,6 +14,16 @@ func TestApplyMarkDownFormat(t *testing.T) {
 		want string
 	}{
 		{
+			name: "empty template",
+			in:   "",
+			want: "",
+		},
+		{
+			name: "template containing only newlines",
+			in:   "\n\n",
+			want: "",
+		},
+		{
 			name: "collapses trailing blank lines into a single newline",
 			in:   "# Chart\n\n| key | value |\n\n\n",
 			want: "# Chart\n\n| key | value |\n",
