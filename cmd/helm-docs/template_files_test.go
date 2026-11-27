@@ -27,6 +27,18 @@ func TestMultiFileTemplateCommand(t *testing.T) {
 			want:   "First from both\n",
 		},
 		{
+			name:   "root assignment across files",
+			first:  `{{ $ = "changed" }}`,
+			second: `{{ $ }}`,
+			want:   "changed\n",
+		},
+		{
+			name:   "named override has its own root",
+			first:  `{{ if true }}{{ $ = "document" }}{{ end }}{{ block "title" "argument" }}Fallback{{ end }}`,
+			second: `{{ define "title" }}{{ $ }}:{{ $ = "local" }}{{ $ }}{{ end }}|{{ $ }}|{{ .Name }}`,
+			want:   "argument:local|document|templates\n",
+		},
+		{
 			name:   "named override with a standalone section",
 			first:  "{{ block \"title\" . }}Fallback{{ end }}\n{{ template \"chart.extras\" . }}",
 			second: `{{ define "title" }}Override{{ end }}`,

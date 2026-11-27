@@ -540,6 +540,10 @@ func parseDocumentationTemplateFiles(documentationTemplate *template.Template, f
 		return finishCombinedDocumentationTemplate(documentationTemplate, missingLocalTemplate)
 	}
 
+	// Execute file bodies in one scope. Each list retains its own source tree
+	// so errors still point to the file that supplied the failing action.
+	body := parse.New(documentationTemplate.Name())
+	body.Root = &parse.ListNode{NodeType: parse.NodeList}
 	for _, part := range parts {
 		for _, definition := range part.Templates() {
 			if definition.Name() != part.Name() {
@@ -548,28 +552,18 @@ func parseDocumentationTemplateFiles(documentationTemplate *template.Template, f
 				}
 			}
 		}
-	}
-
-	// Keep each file's parse tree intact so execution errors retain its location.
-	var body strings.Builder
-	var hasBody bool
-	for _, part := range parts {
-		name := part.Name()
-		for documentationTemplate.Lookup(name) != nil {
-			name += " (body)"
-		}
-		if _, err := documentationTemplate.AddParseTree(name, part.Tree); err != nil {
-			return nil, err
-		}
-		fmt.Fprintf(&body, `{{ template %q . }}`, name)
-		hasBody = hasBody || !parse.IsEmptyTree(part.Tree.Root)
+		body.Root.Nodes = append(body.Root.Nodes, part.Tree.Root)
 	}
 
 	// A chart-local template is optional when a loaded template provides the body.
-	if missingLocalTemplate && !hasBody {
-		body.WriteString(defaultDocumentationTemplate)
+	if missingLocalTemplate && parse.IsEmptyTree(body.Root) {
+		fallback, err := template.New(defaultDocumentationTemplateName).Funcs(funcs).Parse(defaultDocumentationTemplate)
+		if err != nil {
+			return nil, err
+		}
+		body.Root.Nodes = append(body.Root.Nodes, fallback.Tree.Root)
 	}
-	return documentationTemplate.Parse(body.String())
+	return documentationTemplate.AddParseTree(body.Name, body)
 }
 
 func templateBoundariesShareBodyScope(sources []documentationTemplateSource, funcs template.FuncMap) bool {
