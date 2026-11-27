@@ -1,6 +1,7 @@
 package helm
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -10,28 +11,39 @@ import (
 )
 
 func FindChartDirectories(chartSearchRoot string) ([]string, error) {
-	ignoreFilename := viper.GetString("ignore-file")
-	ignoreContext := util.NewIgnoreContext(ignoreFilename)
 	chartDirs := make([]string, 0)
 
-	err := filepath.Walk(chartSearchRoot, func(path string, info os.FileInfo, err error) error {
+	if chartSearchRoot == "" {
+		return chartDirs, errors.New("chart search root is empty")
+	}
+	absoluteRoot, err := filepath.Abs(chartSearchRoot)
+	if err != nil {
+		return chartDirs, err
+	}
+	// Resolve the root so directory discovery and ignore rules see the same paths
+	// as they would when the chart is reached without a symlink.
+	resolvedRoot, err := filepath.EvalSymlinks(absoluteRoot)
+	if err != nil {
+		return chartDirs, err
+	}
+
+	ignoreContext := util.NewIgnoreContext(viper.GetString("ignore-file"))
+	err = filepath.Walk(resolvedRoot, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		absolutePath, _ := filepath.Abs(path)
-
-		if info.IsDir() && ignoreContext.ShouldIgnore(absolutePath, info) {
+		if info.IsDir() && ignoreContext.ShouldIgnore(path, info) {
 			log.Debugf("Ignoring directory %s", path)
 			return filepath.SkipDir
 		}
 
 		if filepath.Base(path) == "Chart.yaml" {
-			if ignoreContext.ShouldIgnore(absolutePath, info) {
+			if ignoreContext.ShouldIgnore(path, info) {
 				log.Debugf("Ignoring chart file %s", path)
 				return nil
 			}
-			relativeChartDir, err := filepath.Rel(chartSearchRoot, filepath.Dir(path))
+			relativeChartDir, err := filepath.Rel(resolvedRoot, filepath.Dir(path))
 
 			if err != nil {
 				return err
