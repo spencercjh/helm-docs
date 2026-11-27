@@ -23,4 +23,3 @@ A chart demonstrating that values documentation from child charts are aggregated
 | myParentKey | string | `"my-parent-value"` | A parent key |
 | sub-a.mySubKeyA | string | `"my-sub-value-a"` | Value for sub-chart A |
 | sub-b.mySubKeyB | string | `"my-sub-value-b"` | Value for sub-chart B |
-

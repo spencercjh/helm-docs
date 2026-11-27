@@ -29,4 +29,3 @@ One of the best values parsing example charts here, exhibits several more compli
 | statefulset.image.tag | string | `"11"` |  |
 | statefulset.livenessProbe | object | `{"enabled":false}` | Configure the healthcheck for the database |
 | statefulset.podLabels | object | `{}` | The labels to be applied to instances of the database |
-

@@ -2,9 +2,11 @@ package document
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/norwoodj/helm-docs/pkg/helm"
 	log "github.com/sirupsen/logrus"
@@ -26,7 +28,7 @@ func getOutputFile(chartDirectory string, dryRun bool) (*os.File, error) {
 	return f, err
 }
 
-func PrintDocumentation(chartDocumentationInfo helm.ChartDocumentationInfo, chartSearchRoot string, templateFiles []string, dryRun bool, helmDocsVersion string, badgeStyle string, dependencyValues []DependencyValues, skipVersionFooter bool) {
+func PrintDocumentation(chartDocumentationInfo helm.ChartDocumentationInfo, chartSearchRoot string, templateFiles []string, dryRun bool, helmDocsVersion string, badgeStyle string, dependencyValues []DependencyValues, skipVersionFooter bool) (err error) {
 	log.Infof("Generating README Documentation for chart %s", chartDocumentationInfo.ChartDirectory)
 
 	chartDocumentationTemplate, err := newChartDocumentationTemplate(
@@ -37,37 +39,40 @@ func PrintDocumentation(chartDocumentationInfo helm.ChartDocumentationInfo, char
 	)
 
 	if err != nil {
-		log.Warnf("Error generating gotemplates for chart %s: %s", chartDocumentationInfo.ChartDirectory, err)
-		return
+		return fmt.Errorf("error generating gotemplates for chart %s: %w", chartDocumentationInfo.ChartDirectory, err)
 	}
 
 	chartTemplateDataObject, err := getChartTemplateData(chartDocumentationInfo, helmDocsVersion, dependencyValues, skipVersionFooter)
 	if err != nil {
-		log.Warnf("Error generating template data for chart %s: %s", chartDocumentationInfo.ChartDirectory, err)
-		return
-	}
-
-	outputFile, err := getOutputFile(chartDocumentationInfo.ChartDirectory, dryRun)
-	if err != nil {
-		log.Warnf("Could not open chart README file %s, skipping chart", filepath.Join(chartDocumentationInfo.ChartDirectory, viper.GetString("output-file")))
-		return
-	}
-
-	if !dryRun {
-		defer outputFile.Close()
+		return fmt.Errorf("error generating template data for chart %s: %w", chartDocumentationInfo.ChartDirectory, err)
 	}
 
 	var output bytes.Buffer
 	err = chartDocumentationTemplate.Execute(&output, chartTemplateDataObject)
 	if err != nil {
-		log.Warnf("Error generating documentation for chart %s: %s", chartDocumentationInfo.ChartDirectory, err)
+		return fmt.Errorf("error generating documentation for chart %s: %w", chartDocumentationInfo.ChartDirectory, err)
 	}
 
 	output = applyMarkDownFormat(output)
+
+	outputFile, err := getOutputFile(chartDocumentationInfo.ChartDirectory, dryRun)
+	if err != nil {
+		return fmt.Errorf("could not open chart README file %s: %w", filepath.Join(chartDocumentationInfo.ChartDirectory, viper.GetString("output-file")), err)
+	}
+	if !dryRun {
+		defer func() {
+			if closeErr := outputFile.Close(); closeErr != nil && err == nil {
+				err = fmt.Errorf("error closing documentation file for chart %s: %w", chartDocumentationInfo.ChartDirectory, closeErr)
+			}
+		}()
+	}
+
 	_, err = output.WriteTo(outputFile)
 	if err != nil {
-		log.Warnf("Error generating documentation file for chart %s: %s", chartDocumentationInfo.ChartDirectory, err)
+		return fmt.Errorf("error generating documentation file for chart %s: %w", chartDocumentationInfo.ChartDirectory, err)
 	}
+
+	return nil
 }
 
 func applyMarkDownFormat(output bytes.Buffer) bytes.Buffer {
@@ -77,6 +82,13 @@ func applyMarkDownFormat(output bytes.Buffer) bytes.Buffer {
 
 	re = regexp.MustCompile(`\n{3,}`)
 	outputString = re.ReplaceAllString(outputString, "\n\n")
+
+	// End the file with a single trailing newline so it doesn't fight tools
+	// that enforce that (for example pre-commit's end-of-file-fixer).
+	outputString = strings.TrimRight(outputString, "\n")
+	if outputString != "" {
+		outputString += "\n"
+	}
 
 	output.Reset()
 	output.WriteString(outputString)

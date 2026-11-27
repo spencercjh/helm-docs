@@ -125,6 +125,21 @@ func jsonMarshalNoEscape(key string, value interface{}) (string, error) {
 	return strings.TrimRight(outputBuffer.String(), "\n"), nil
 }
 
+func markdownCodeSpanForJSON(value string) string {
+	longestRun, run := 0, 0
+	for _, char := range value {
+		if char == '`' {
+			run++
+			longestRun = max(longestRun, run)
+		} else {
+			run = 0
+		}
+	}
+	delimiter := strings.Repeat("`", longestRun+1)
+	// JSON always starts and ends with a non-backtick, so no padding is needed.
+	return delimiter + value + delimiter
+}
+
 func getDescriptionFromNode(node *yaml.Node) helm.ChartValueDescription {
 	if node == nil {
 		return helm.ChartValueDescription{}
@@ -177,7 +192,7 @@ func createValueRow(
 			return valueRow{}, fmt.Errorf("failed to marshal default value for %s to json: %s", key, err)
 		}
 
-		defaultValue = fmt.Sprintf("`%s`", jsonEncodedValue)
+		defaultValue = markdownCodeSpanForJSON(jsonEncodedValue)
 	}
 
 	defaultFromRawValue := defaultValue == "" && autoDefaultValue == "" && notationType != ""

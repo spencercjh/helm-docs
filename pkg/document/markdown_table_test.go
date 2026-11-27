@@ -64,9 +64,9 @@ func TestValueTableEscapesRawAndCustomDefaults(t *testing.T) {
 		},
 		{
 			name:     "custom markdown default",
-			values:   "value: 'a\\|b'",
-			want:     "\n| value | string |  `\"a\\\\\\|b\"`  |  |",
-			wantHTML: "<pre lang=\"json\">\n\"a\\\\|b\"\n</pre>",
+			values:   "value: 'call(`a\\|b`)'",
+			want:     "\n| value | string |  ``\"call(`a\\\\\\|b`)\"``  |  |",
+			wantHTML: "<pre lang=\"json\">\n\"call(`a\\\\|b`)\"\n</pre>",
 			files:    []string{"custom.gotmpl"},
 		},
 	} {

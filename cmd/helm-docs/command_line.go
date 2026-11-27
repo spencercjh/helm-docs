@@ -3,15 +3,39 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"github.com/norwoodj/helm-docs/pkg/document"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/mod/module"
+	"golang.org/x/mod/semver"
 )
 
 var version string
+
+func init() {
+	// If version was not set via ldflags (e.g. goreleaser), try to get it from
+	// the Go module build info. This covers the case where the binary is built
+	// with "go install" (e.g. pre-commit's language: golang hook type).
+	if version != "" {
+		return
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		version = moduleReleaseVersion(info.Main.Version)
+	}
+}
+
+// The README footer links to a release tag. Development builds can carry a
+// Go-generated pseudo-version or a dirty working-tree suffix with no such tag.
+func moduleReleaseVersion(v string) string {
+	if !semver.IsValid(v) || module.IsPseudoVersion(v) || strings.HasSuffix(v, "+dirty") {
+		return ""
+	}
+	return strings.TrimPrefix(v, "v")
+}
 
 func possibleLogLevels() []string {
 	levels := make([]string, 0)

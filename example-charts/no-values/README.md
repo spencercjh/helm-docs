@@ -15,4 +15,3 @@ A very simple chart that doesn't even need any values for customization
 ## Source Code
 
 * <https://github.com/norwoodj/helm-docs/tree/master/example-charts/no-values>
-
