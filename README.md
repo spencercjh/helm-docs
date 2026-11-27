@@ -361,6 +361,8 @@ controller:
 New-style comments are much the same as the old-style comments, except that while old comments for a field could appear
 anywhere in the file, new-style comments must appear **on the line(s) immediately preceding the field being documented.**
 
+Single-line `# @schema` annotations and blocks between two standalone `# @schema` lines are omitted from generated descriptions.
+
 I invite you to check out the [example-charts](./example-charts) to see how this is done in practice. The `but-auto-comments`
 examples in particular document the new comment format.
 
