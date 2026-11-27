@@ -180,7 +180,8 @@ func createValueRow(
 		defaultValue = fmt.Sprintf("`%s`", jsonEncodedValue)
 	}
 
-	if defaultValue == "" && autoDefaultValue == "" && notationType != "" {
+	defaultFromRawValue := defaultValue == "" && autoDefaultValue == "" && notationType != ""
+	if defaultFromRawValue {
 		// We want to render custom styles for custom NotationType
 		// So, output a raw default value for this and let the template handle it
 		defaultValue = fmt.Sprintf("%s", value)
@@ -192,16 +193,17 @@ func createValueRow(
 	}
 
 	return valueRow{
-		Key:             key,
-		Type:            defaultType,
-		NotationType:    notationType,
-		AutoDefault:     autoDescription.Default,
-		Default:         defaultValue,
-		AutoDescription: autoDescription.Description,
-		Description:     description.Description,
-		Section:         section,
-		Column:          column,
-		LineNumber:      lineNumber,
+		Key:                 key,
+		Type:                defaultType,
+		NotationType:        notationType,
+		AutoDefault:         autoDescription.Default,
+		Default:             defaultValue,
+		AutoDescription:     autoDescription.Description,
+		Description:         description.Description,
+		Section:             section,
+		Column:              column,
+		LineNumber:          lineNumber,
+		defaultFromRawValue: defaultFromRawValue,
 	}, nil
 }
 
