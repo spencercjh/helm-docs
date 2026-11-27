@@ -8,19 +8,34 @@ const (
 	PrefixComment = "# --"
 )
 
+// yaml.v3 may attach a standalone section and the next value description to
+// the same HeadComment. A physical blank line ends the section; a bare "#"
+// is a blank line within its Markdown body.
+func withoutExtraSections(lines []string) []string {
+	var valueLines []string
+	start := 0
+	for i := 0; i < len(lines); i++ {
+		if !extraRegex.MatchString(lines[i]) {
+			continue
+		}
+		valueLines = append(valueLines, lines[start:i]...)
+		for i < len(lines) && strings.TrimSpace(lines[i]) != "" {
+			i++
+		}
+		start = i
+	}
+	if start == 0 {
+		return lines
+	}
+	return append(valueLines, lines[start:]...)
+}
+
 func ParseComment(commentLines []string) (string, ChartValueDescription) {
 	var valueKey string
 	var c ChartValueDescription
 	var docStartIdx int
 
-	// An @extra section ends the value documentation. Everything from that
-	// line on belongs to the extra section and must not leak into the value.
-	for i, v := range commentLines {
-		if extraRegex.MatchString(v) {
-			commentLines = commentLines[:i]
-			break
-		}
-	}
+	commentLines = withoutExtraSections(commentLines)
 	if len(commentLines) == 0 {
 		return valueKey, c
 	}
