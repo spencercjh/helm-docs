@@ -46,3 +46,4 @@ You can use the following formula to roughly estimate the required storage:
 More information about persistent volume claims can be found in
 [PersistentVolumeClaims](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#persistentvolumeclaims).
 
+[View the annotated chart values](values.yaml).

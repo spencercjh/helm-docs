@@ -448,6 +448,9 @@ using the `@extra -- <title>` tag. All comment lines after this tag, up to the n
 (lowercase with hyphens), so you can link to the extra documentation from the value descriptions. This is often
 useful to provide more details and/or examples for a given value.
 
+Sections appear in alphabetical order by title. Give each section a unique title. If a title appears more than once,
+helm-docs uses the last block with that title.
+
 An `@extra` tag can follow the description of a value (and its `@default`, `@section`, ... tags). It ends the
 description of that value, so put it after all other tags:
 
