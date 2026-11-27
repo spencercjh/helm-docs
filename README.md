@@ -384,6 +384,8 @@ examples in particular document the new comment format.
 Note that comments can continue on the next line. In that case leave out the double dash, and the lines will simply be
 appended with a space in-between, as in the `controller.replicas` field in the example above
 
+Start a YAML comment with `##` to omit that line from the generated description. To include a Markdown heading, write `# ## Heading`.
+
 The following rules are used to determine which values will be added to the values table in the README:
 
 * By default, only _leaf nodes_, that is, fields of type `int`, `string`, `float`, `bool`, empty lists, and empty maps
