@@ -24,6 +24,28 @@ func ParseNodeComment(node *yaml.Node) ChartValueDescription {
 	return description
 }
 
+// yaml.v3 may attach a standalone section and the next value description to
+// the same HeadComment. A physical blank line ends the section; a bare "#"
+// is a blank line within its Markdown body.
+func withoutExtraSections(lines []string) []string {
+	var valueLines []string
+	start := 0
+	for i := 0; i < len(lines); i++ {
+		if !extraRegex.MatchString(lines[i]) {
+			continue
+		}
+		valueLines = append(valueLines, lines[start:i]...)
+		for i < len(lines) && strings.TrimSpace(lines[i]) != "" {
+			i++
+		}
+		start = i
+	}
+	if start == 0 {
+		return lines
+	}
+	return append(valueLines, lines[start:]...)
+}
+
 func ParseComment(commentLines []string) (string, ChartValueDescription) {
 	commentLines = withoutSchemaAnnotations(commentLines)
 	if len(commentLines) == 0 {
@@ -32,6 +54,11 @@ func ParseComment(commentLines []string) (string, ChartValueDescription) {
 	var valueKey string
 	var c ChartValueDescription
 	var docStartIdx int
+
+	commentLines = withoutExtraSections(commentLines)
+	if len(commentLines) == 0 {
+		return valueKey, c
+	}
 
 	// Work around https://github.com/norwoodj/helm-docs/issues/96 by considering only
 	// the last "group" of comment lines starting with '# --'.

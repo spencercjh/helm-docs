@@ -48,8 +48,16 @@ func TestStrictModeCommand(t *testing.T) {
 
 	t.Run("documented path syntax", func(t *testing.T) {
 		root := t.TempDir()
-		values := `ports:
+		values := `# @extra -- Setup
+# -- Text in a standalone section.
+# @default -- Section metadata example
+
+# -- Operating mode
+# @default -- managed
+mode: auto
+ports:
   # ports[0].name -- Port name
+  # @default -- web port
   - name: web
 service:
   annotations:
@@ -61,9 +69,11 @@ service:
 		require.NoError(t, err, "%s", output)
 		readme, err := os.ReadFile(filepath.Join(root, "README.md"))
 		require.NoError(t, err)
-		require.Contains(t, string(readme), "| ports[0].name | string | `\"web\"` | Port name |")
+		require.Contains(t, string(readme), "| mode | string | managed | Operating mode |")
+		require.Contains(t, string(readme), "| ports[0].name | string | web port | Port name |")
 		require.Contains(t, string(readme), `| service.annotations."external-dns.alpha.kubernetes.io/hostname" |`)
 		require.Contains(t, string(readme), " | DNS hostname |")
+		require.Contains(t, string(readme), "### Setup\n-- Text in a standalone section.\n@default -- Section metadata example")
 	})
 
 	t.Run("ignore flags", func(t *testing.T) {

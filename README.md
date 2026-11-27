@@ -136,6 +136,17 @@ pre-commit install-hooks
 
 Future changes to your chart's `requirements.yaml`, `values.yaml`, `Chart.yaml`, or `README.md.gotmpl` files will cause an update to documentation when you commit.
 
+To generate documentation from `values-prod.yaml`, add `--values-file=values-prod.yaml` to the hook's `args`. Set the hook's `files` pattern so changes to that file also trigger the hook, including when you pin a revision with the older file filter.
+
+```yaml
+- id: helm-docs
+  files: '(^|/)(README\.md\.gotmpl|(Chart|requirements|values|values-prod)\.yaml)$'
+  args:
+    - --values-file=values-prod.yaml
+```
+
+When you run `helm-docs` directly, pass `--values-file=values-prod.yaml` on the command line.
+
 There are several variants of `pre-commit` hooks to choose from depending on your use case.
 
 #### `helm-docs`  Uses `helm-docs` binary located in your `PATH`
@@ -227,14 +238,15 @@ docker run --rm --volume "$(pwd):/helm-docs" -u $(id -u) jnorwood/helm-docs:late
 ```
 
 ## Ignoring Chart Directories
-helm-docs supports a `.helmdocsignore` file, exactly like a `.gitignore` file in which one can specify directories to ignore
-when searching for charts. Directories specified need not be charts themselves, so parent directories containing potentially
-many charts can be ignored and none of the charts underneath them will be processed. You may also directly reference the
-Chart.yaml file for a chart to skip processing for it.
+
+Place `.helmdocsignore` at the Git repository root. Outside a Git repository, place it in the directory where you run `helm-docs`.
+Write relative paths from that directory. For example, use `charts/demo/charts/` to exclude the entire dependency directory or `charts/demo/Chart.yaml` to skip a single chart.
 
 ## Generating Doc with Dependency values
 Umbrella Helm chart documentation can include dependency values with `document-dependency-values` flag.
 All dependency values will be merged into values of umbrella chart documentation.
+
+For a dependency declared as `repository: file://../child`, set `--chart-search-root` to a directory that contains both charts. To generate only the parent README, select the parent with `--chart-to-generate`.
 
 If you want to include dependency values, but don't want to generate doc for each dependency:
 * set `chart-search-root` parameter to directory that contains umbrella chart and all dependency charts.
@@ -274,6 +286,7 @@ can be used as well:
 | chart.typeBadge                      | A badge stating the current type of the chart |
 | chart.appVersion                     | The _appVersion_ field from the chart's `Chart.yaml` file |
 | chart.appVersionBadge                | A badge stating the current appVersion of the chart |
+| chart.extras                         | All extra sections (ordered by title) |
 | chart.homepage                       | The _home_ link from the chart's `Chart.yaml` file, or "" if that field is not set |
 | chart.homepageLine                   | A text line stating the current homepage of the chart |
 | chart.maintainersHeader              | The heading for the chart maintainers section |
@@ -320,6 +333,8 @@ The default internal template mentioned above uses many of these and looks like 
 {{ template "chart.requirementsSection" . }}
 
 {{ template "chart.valuesSection" . }}
+
+{{ template "chart.extras" . }}
 
 {{ template "helm-docs.versionFooter" . }}
 
@@ -471,6 +486,29 @@ configMap:
   not real config param: value
 ```
 
+### Extra sections
+You can define extra documentation (rendered after the values) that can contain any markdown. This can be done
+using the `@extra -- <title>` tag. All comment lines after this tag, up to the next non-comment line or the next
+`@extra` tag, are rendered under a heading with the given title. Markdown supports anchors for each title
+(lowercase with hyphens), so you can link to the extra documentation from the value descriptions. This is often
+useful to provide more details and/or examples for a given value.
+
+Sections appear in alphabetical order by title. Give each section a unique title. If a title appears more than once,
+helm-docs uses the last block with that title.
+
+An `@extra` tag can follow the description of a value (and its `@default`, `@section`, ... tags). It ends the
+description of that value, so put it after all other tags:
+
+```yaml
+# -- Storage class to use. See [Storage](#storage) for details.
+# @default -- the cluster default
+# @extra -- Storage
+# Any markdown, including code blocks and lists.
+storageClass: ""
+```
+
+See [here](./example-charts/extra-sections/README.md) for an example.
+
 ### Advanced table rendering
 Some helm chart `values.yaml` uses complicated structure for the key/value
 pairs. For example, it may uses a multiline string of Go template text instead
@@ -496,6 +534,8 @@ instead of using `chart.valuesSection`. Using HTML tables provides more
 flexibility because it can be processed by markdown viewer as a nested blocks,
 instead of one row per line. This allows you to customize how each columns in a
 row are rendered.
+
+To preserve line breaks and indentation in a value description, put `# @raw` after the first description line. Use an HTML values table for multiline descriptions. See the [raw comment example](./example-charts/custom-value-notation-type/values.yaml#L203).
 
 2. Overriding built-in templates
 
