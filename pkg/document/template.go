@@ -219,13 +219,14 @@ func getValuesTableTemplates() string {
 	valuesSectionBuilder.WriteString("{{ end }}")
 
 	valuesSectionBuilder.WriteString(`{{ define "chart.valueDefaultColumnRenderMd" }}`)
-	valuesSectionBuilder.WriteString("{{ if .Default }}{{ .Default }}{{ else }}{{ .AutoDefault }}{{ end }}")
+	valuesSectionBuilder.WriteString("{{ if .Default }}{{ markdownValueDefault . .Default }}{{ else }}{{ .AutoDefault }}{{ end }}")
 	valuesSectionBuilder.WriteString("{{ end }}")
 
 	valuesSectionBuilder.WriteString(`{{ define "chart.valueDescriptionColumnRenderMd" }}`)
 	valuesSectionBuilder.WriteString("{{ if .Description }}{{ .Description }}{{ else }}{{ .AutoDescription }}{{ end }}")
 	valuesSectionBuilder.WriteString("{{ end }}")
 
+	const markdownRow = "\n" + `| {{ markdownTableCell "chart.valueKeyColumnRenderMd" . }} | {{ markdownTableCell "chart.valueTypeColumnRenderMd" . }} | {{ markdownTableCell "chart.valueDefaultColumnRenderMd" . }} | {{ markdownTableCell "chart.valueDescriptionColumnRenderMd" . }} |`
 	valuesSectionBuilder.WriteString(`{{ define "chart.valuesTable" }}`)
 	valuesSectionBuilder.WriteString("{{ if .Sections.Sections }}")
 	valuesSectionBuilder.WriteString("{{ range .Sections.Sections }}")
@@ -235,7 +236,7 @@ func getValuesTableTemplates() string {
 	valuesSectionBuilder.WriteString("| Key | Type | Default | Description |\n")
 	valuesSectionBuilder.WriteString("|-----|------|---------|-------------|\n")
 	valuesSectionBuilder.WriteString("  {{- range .SectionItems }}")
-	valuesSectionBuilder.WriteString("\n" + `| {{ template "chart.valueKeyColumnRenderMd" . }} | {{ template "chart.valueTypeColumnRenderMd" . }} | {{ template "chart.valueDefaultColumnRenderMd" . }} | {{ template "chart.valueDescriptionColumnRenderMd" . }} |`)
+	valuesSectionBuilder.WriteString(markdownRow)
 	valuesSectionBuilder.WriteString("  {{- end }}")
 	valuesSectionBuilder.WriteString("{{- end }}")
 	valuesSectionBuilder.WriteString("{{ if .Sections.DefaultSection.SectionItems}}")
@@ -245,14 +246,14 @@ func getValuesTableTemplates() string {
 	valuesSectionBuilder.WriteString("| Key | Type | Default | Description |\n")
 	valuesSectionBuilder.WriteString("|-----|------|---------|-------------|\n")
 	valuesSectionBuilder.WriteString("  {{- range .Sections.DefaultSection.SectionItems }}")
-	valuesSectionBuilder.WriteString("\n" + `| {{ template "chart.valueKeyColumnRenderMd" . }} | {{ template "chart.valueTypeColumnRenderMd" . }} | {{ template "chart.valueDefaultColumnRenderMd" . }} | {{ template "chart.valueDescriptionColumnRenderMd" . }} |`)
+	valuesSectionBuilder.WriteString(markdownRow)
 	valuesSectionBuilder.WriteString("  {{- end }}")
 	valuesSectionBuilder.WriteString("{{ end }}")
 	valuesSectionBuilder.WriteString("{{ else }}")
 	valuesSectionBuilder.WriteString("| Key | Type | Default | Description |\n")
 	valuesSectionBuilder.WriteString("|-----|------|---------|-------------|\n")
 	valuesSectionBuilder.WriteString("  {{- range .Values }}")
-	valuesSectionBuilder.WriteString("\n" + `| {{ template "chart.valueKeyColumnRenderMd" . }} | {{ template "chart.valueTypeColumnRenderMd" . }} | {{ template "chart.valueDefaultColumnRenderMd" . }} | {{ template "chart.valueDescriptionColumnRenderMd" . }} |`)
+	valuesSectionBuilder.WriteString(markdownRow)
 	valuesSectionBuilder.WriteString("  {{- end }}")
 	valuesSectionBuilder.WriteString("{{ end }}")
 	valuesSectionBuilder.WriteString("{{ end }}")
@@ -485,7 +486,16 @@ func getDocumentationTemplates(chartDirectory string, chartSearchRoot string, te
 
 func newChartDocumentationTemplate(chartDocumentationInfo helm.ChartDocumentationInfo, chartSearchRoot string, templateFiles []string, badgeStyle string) (*template.Template, error) {
 	documentationTemplate := template.New(chartDocumentationInfo.ChartDirectory)
-	documentationTemplate.Funcs(util.FuncMap())
+	funcs := util.FuncMap()
+	funcs["markdownValueDefault"] = markdownValueDefault
+	funcs["markdownTableCell"] = func(name string, row any) (string, error) {
+		var cell strings.Builder
+		if err := documentationTemplate.ExecuteTemplate(&cell, name, row); err != nil {
+			return "", err
+		}
+		return escapeMarkdownTablePipes(cell.String(), false), nil
+	}
+	documentationTemplate.Funcs(funcs)
 	goTemplateList, err := getDocumentationTemplates(chartDocumentationInfo.ChartDirectory, chartSearchRoot, templateFiles, badgeStyle)
 	if err != nil {
 		return nil, err
@@ -499,4 +509,38 @@ func newChartDocumentationTemplate(chartDocumentationInfo helm.ChartDocumentatio
 	}
 
 	return documentationTemplate, nil
+}
+
+func markdownValueDefault(row any, value string) string {
+	if row, ok := row.(valueRow); ok && row.defaultFromRawValue {
+		return escapeMarkdownTablePipes(value, true)
+	}
+	return value
+}
+
+func escapeMarkdownTablePipes(cell string, literalBackslashes bool) string {
+	if !strings.Contains(cell, "|") {
+		return cell
+	}
+	var escaped strings.Builder
+	backslashes := 0
+	for i := 0; i < len(cell); i++ {
+		char := cell[i]
+		if char == '\\' {
+			backslashes++
+		} else {
+			if char == '|' {
+				if literalBackslashes {
+					// The table parser removes one escape and inline Markdown
+					// interprets the remaining pairs as literal backslashes.
+					escaped.WriteString(strings.Repeat("\\", backslashes+1))
+				} else if backslashes%2 == 0 {
+					escaped.WriteByte('\\')
+				}
+			}
+			backslashes = 0
+		}
+		escaped.WriteByte(char)
+	}
+	return escaped.String()
 }

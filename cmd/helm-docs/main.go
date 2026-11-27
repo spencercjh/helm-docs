@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 
@@ -103,10 +104,15 @@ func readDocumentationInfoByChartPath(chartSearchRoot string, parallelism int) (
 	if err != nil {
 		return nil, fmt.Errorf("error parsing the linting config%w", err)
 	}
+	generateDirectories := viper.GetStringSlice("chart-to-generate")
 
 	parallelProcessIterable(chartDirs, parallelism, func(elem interface{}) {
 		chartDir := elem.(string)
-		info, err := helm.ParseChartInformation(filepath.Join(chartSearchRoot, chartDir), documentationParsingConfig)
+		chartPath := filepath.Join(chartSearchRoot, chartDir)
+		chartConfig := documentationParsingConfig
+		// Unselected charts can still supply values and descriptions to selected parents.
+		chartConfig.StrictMode = chartConfig.StrictMode && (len(generateDirectories) == 0 || slices.Contains(generateDirectories, chartPath))
+		info, err := helm.ParseChartInformation(chartPath, chartConfig)
 		if err != nil {
 			var undocumented *helm.UndocumentedValuesError
 			if errors.As(err, &undocumented) {

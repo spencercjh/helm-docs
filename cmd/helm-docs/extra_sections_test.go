@@ -17,11 +17,15 @@ func TestDefaultReadmePreservesValueCommentsAfterExtraSections(t *testing.T) {
 
 # @extra -- Upgrading
 # Read the notes before changing the image.
+## Internal upgrade note
+# Follow the version policy.
 
 # -- Image to deploy
+## Do not put the rollout steps in the table.
 # @default -- nginx:1.25
 # @extra -- Example
 # Example values file:
+## @extra -- Internal example heading
 #
 # -- Select a compatible image.
 # @default -- example only
@@ -31,6 +35,7 @@ image: nginx
 # Check the service port before deployment.
 
 # port -- Port to expose
+## @default -- internal override
 # @default -- assigned by the platform
 port: 8080
 `
@@ -57,5 +62,6 @@ port: 8080
 Check the service port before deployment.
 
 ### Upgrading
-Read the notes before changing the image.`, strings.TrimSpace(sections))
+Read the notes before changing the image.
+Follow the version policy.`, strings.TrimSpace(sections))
 }
