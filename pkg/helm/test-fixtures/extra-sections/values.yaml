@@ -18,3 +18,18 @@ controller:
 # @extra -- Second Extra
 # Second line.
 standalone: true
+
+config:
+  sample: |-
+    # @extra -- First Extra
+    # This example must not replace the real first section.
+    storageClass: standard
+  # @extra -- Config Notes
+  # The sample is passed to the application as a file.
+  help: >2-
+    # @extra -- Folded Example
+    # This text belongs to the application.
+  enabled: true # @extra -- Inline Example
+
+# @extra -- Second Extra
+# Updated second section.

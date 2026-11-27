@@ -112,6 +112,7 @@ func (suite *ChartParsingTestSuite) TestExtraSectionsWithDescriptionAndDefault()
 	suite.Equal(map[string]string{
 		"Volume Claim Template": "The volume claim template is used to create a `PersistentVolumeClaim`.\n\n```\n( N_enclaves * 200 ) + ( N_keys * 200 ) = total number of bytes\n```",
 		"First Extra":           "First line.",
-		"Second Extra":          "Second line.",
+		"Second Extra":          "Updated second section.",
+		"Config Notes":          "The sample is passed to the application as a file.",
 	}, info.Extras)
 }
