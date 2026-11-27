@@ -9,7 +9,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.16.0
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/mod v0.31.0
+	golang.org/x/mod v0.36.0
 	gopkg.in/yaml.v3 v3.0.1
 	helm.sh/helm/v3 v3.21.2
 )
