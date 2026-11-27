@@ -53,6 +53,9 @@ func NewIgnoreContext(ignoreFilename string) IgnoreContext {
 		}
 
 		absoluteWorkingDir, _ := filepath.Abs(".")
+		if resolvedDir, err := filepath.EvalSymlinks(absoluteWorkingDir); err == nil {
+			absoluteWorkingDir = resolvedDir
+		}
 		return IgnoreContext{rules: ignoreRules, relativeDir: absoluteWorkingDir}
 	}
 
