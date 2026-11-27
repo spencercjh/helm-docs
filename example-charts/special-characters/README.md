@@ -25,4 +25,3 @@ A chart demonstrating handling of special characters in values files
 | htmlSnippets.one | string | `"<html>\n  <head></head>\n  <body>\n    <h1>Is this right, I don't know html</h1>\n  </body>\n</html>\n"` |  |
 | htmlSnippets.three | string | `"<html><head></head></html>"` | Another description |
 | htmlSnippets.two | string | `""` | Let's put it in the description <html></html> |
-

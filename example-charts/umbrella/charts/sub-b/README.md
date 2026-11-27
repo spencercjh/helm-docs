@@ -16,4 +16,3 @@ A sub-chart.
 |-----|------|---------|-------------|
 | global.myGlobalKey | string | `"my-global-value"` | A global key |
 | mySubKeyB | string | `"my-sub-value-b"` | Value for sub-chart B |
-

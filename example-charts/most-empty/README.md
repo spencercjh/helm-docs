@@ -19,4 +19,3 @@ There is a flower though:
   |    -hi-
 __|_____________
 ```
-
