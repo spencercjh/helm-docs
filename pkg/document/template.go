@@ -2,11 +2,11 @@ package document
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
+	"text/template/parse"
 
 	"github.com/norwoodj/helm-docs/pkg/util"
 
@@ -399,10 +399,16 @@ func getHelmDocsVersionTemplates() string {
 	return versionSectionBuilder.String()
 }
 
-func getDocumentationTemplate(chartDirectory string, chartSearchRoot string, templateFiles []string) (string, error) {
-	templateFilesForChart := make([]string, 0)
+type documentationTemplateSource struct {
+	name string
+	text string
+}
 
-	var templateNotFound bool
+const defaultDocumentationTemplateName = "built-in README"
+
+func readDocumentationTemplates(chartDirectory string, chartSearchRoot string, templateFiles []string) ([]documentationTemplateSource, bool, error) {
+	sources := make([]documentationTemplateSource, 0, len(templateFiles))
+	var missingLocalTemplate, missingSharedTemplate bool
 
 	for _, templateFile := range templateFiles {
 		var fullTemplatePath string
@@ -415,41 +421,32 @@ func getDocumentationTemplate(chartDirectory string, chartSearchRoot string, tem
 			fullTemplatePath = templateFile
 		}
 
-		if _, err := os.Stat(fullTemplatePath); os.IsNotExist(err) {
-			log.Debugf("Did not find template file %s for chart %s, using default template", templateFile, chartDirectory)
-
-			templateNotFound = true
+		contents, err := os.ReadFile(fullTemplatePath)
+		if os.IsNotExist(err) {
+			log.Debugf("Did not find template file %s for chart %s", templateFile, chartDirectory)
+			if util.IsBaseFilename(templateFile) {
+				missingLocalTemplate = true
+			} else {
+				missingSharedTemplate = true
+			}
 			continue
 		}
-
-		templateFilesForChart = append(templateFilesForChart, fullTemplatePath)
-	}
-
-	log.Debugf("Using template files %s for chart %s", templateFiles, chartDirectory)
-	allTemplateContents := make([]byte, 0)
-	for _, templateFileForChart := range templateFilesForChart {
-		templateContents, err := ioutil.ReadFile(templateFileForChart)
 		if err != nil {
-			return "", err
+			return nil, false, err
 		}
-		allTemplateContents = append(allTemplateContents, templateContents...)
+		sources = append(sources, documentationTemplateSource{name: fullTemplatePath, text: string(contents)})
 	}
 
-	if templateNotFound {
-		allTemplateContents = append(allTemplateContents, []byte(defaultDocumentationTemplate)...)
+	if missingSharedTemplate {
+		// Explicit shared or absolute paths retain the legacy appended fallback.
+		sources = append(sources, documentationTemplateSource{name: defaultDocumentationTemplateName, text: defaultDocumentationTemplate})
+		return sources, false, nil
 	}
 
-	return string(allTemplateContents), nil
+	return sources, missingLocalTemplate, nil
 }
 
-func getDocumentationTemplates(chartDirectory string, chartSearchRoot string, templateFiles []string, badgeStyle string) ([]string, error) {
-	documentationTemplate, err := getDocumentationTemplate(chartDirectory, chartSearchRoot, templateFiles)
-
-	if err != nil {
-		log.Errorf("Failed to read documentation template for chart %s: %s", chartDirectory, err)
-		return nil, err
-	}
-
+func builtInDocumentationTemplates(badgeStyle string) []string {
 	return []string{
 		getNameTemplate(),
 		getHeaderTemplate(),
@@ -465,26 +462,118 @@ func getDocumentationTemplates(chartDirectory string, chartSearchRoot string, te
 		getHomepageTemplate(),
 		getMaintainersTemplate(),
 		getHelmDocsVersionTemplates(),
-		documentationTemplate,
-	}, nil
+	}
 }
 
 func newChartDocumentationTemplate(chartDocumentationInfo helm.ChartDocumentationInfo, chartSearchRoot string, templateFiles []string, badgeStyle string) (*template.Template, error) {
 	documentationTemplate := template.New(chartDocumentationInfo.ChartDirectory)
-	documentationTemplate.Funcs(util.FuncMap())
-	goTemplateList, err := getDocumentationTemplates(chartDocumentationInfo.ChartDirectory, chartSearchRoot, templateFiles, badgeStyle)
-
+	funcs := util.FuncMap()
+	documentationTemplate.Funcs(funcs)
+	userTemplates, missingLocalTemplate, err := readDocumentationTemplates(chartDocumentationInfo.ChartDirectory, chartSearchRoot, templateFiles)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, t := range goTemplateList {
-		_, err := documentationTemplate.Parse(t)
-
-		if err != nil {
+	for _, t := range builtInDocumentationTemplates(badgeStyle) {
+		if _, err := documentationTemplate.Parse(t); err != nil {
 			return nil, err
 		}
 	}
 
+	var combinedParsed bool
+	if len(userTemplates) > 1 {
+		var combined strings.Builder
+		for _, source := range userTemplates {
+			combined.WriteString(source.text)
+		}
+		_, err := documentationTemplate.Parse(combined.String())
+		combinedParsed = err == nil
+	}
+
+	return parseDocumentationTemplateFiles(documentationTemplate, funcs, userTemplates, missingLocalTemplate, combinedParsed)
+}
+
+func parseDocumentationTemplateFiles(documentationTemplate *template.Template, funcs template.FuncMap, sources []documentationTemplateSource, missingLocalTemplate, combinedParsed bool) (*template.Template, error) {
+	parts := make([]*template.Template, 0, len(sources))
+	var separateBody strings.Builder
+	for _, source := range sources {
+		part, err := template.New(source.name).Funcs(funcs).Parse(source.text)
+		if err != nil {
+			if combinedParsed && templateBoundariesShareBodyScope(sources, funcs) {
+				return finishCombinedDocumentationTemplate(documentationTemplate, missingLocalTemplate)
+			}
+			return nil, err
+		}
+		parts = append(parts, part)
+		if combinedParsed {
+			separateBody.WriteString(part.Tree.Root.String())
+		}
+	}
+
+	// Preserve the combined parse when variables, actions, or whitespace
+	// trimming cross file boundaries.
+	if combinedParsed && separateBody.String() != documentationTemplate.Tree.Root.String() {
+		return finishCombinedDocumentationTemplate(documentationTemplate, missingLocalTemplate)
+	}
+
+	for _, part := range parts {
+		for _, definition := range part.Templates() {
+			if definition.Name() != part.Name() {
+				if _, err := documentationTemplate.AddParseTree(definition.Name(), definition.Tree); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	// Keep each file's parse tree intact so execution errors retain its location.
+	var body strings.Builder
+	var hasBody bool
+	for _, part := range parts {
+		name := part.Name()
+		for documentationTemplate.Lookup(name) != nil {
+			name += " (body)"
+		}
+		if _, err := documentationTemplate.AddParseTree(name, part.Tree); err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(&body, `{{ template %q . }}`, name)
+		hasBody = hasBody || !parse.IsEmptyTree(part.Tree.Root)
+	}
+
+	// A chart-local template is optional when a loaded template provides the body.
+	if missingLocalTemplate && !hasBody {
+		body.WriteString(defaultDocumentationTemplate)
+	}
+	return documentationTemplate.Parse(body.String())
+}
+
+func templateBoundariesShareBodyScope(sources []documentationTemplateSource, funcs template.FuncMap) bool {
+	// A document-body variable stays in scope inside if, range, and with, but
+	// named templates have their own scope. References at file boundaries
+	// distinguish shared document bodies from unterminated named templates.
+	variable := "$helmDocsFileBoundary"
+	for _, source := range sources {
+		for strings.Contains(source.text, variable) {
+			variable += "_"
+		}
+	}
+
+	var probe strings.Builder
+	fmt.Fprintf(&probe, "{{ %s := . }}", variable)
+	for i, source := range sources {
+		if i > 0 {
+			fmt.Fprintf(&probe, "{{ %s }}", variable)
+		}
+		probe.WriteString(source.text)
+	}
+	_, err := template.New("template file boundaries").Funcs(funcs).Parse(probe.String())
+	return err == nil
+}
+
+func finishCombinedDocumentationTemplate(documentationTemplate *template.Template, missingLocalTemplate bool) (*template.Template, error) {
+	if missingLocalTemplate && parse.IsEmptyTree(documentationTemplate.Tree.Root) {
+		return documentationTemplate.Parse(defaultDocumentationTemplate)
+	}
 	return documentationTemplate, nil
 }

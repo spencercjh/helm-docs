@@ -268,8 +268,9 @@ here, you'll see our search root is set to [example-charts](./example-charts) an
 is the [_templates.gotmpl file in that directory](./example-charts/_templates.gotmpl) and the README.md.gotmpl file in
 each chart directory.
 
-If any of the specified template files is not found for a chart (you'll notice most of the example charts do not have a README.md.gotmpl)
-file, then the internal default template is used instead.
+If a chart is missing a template given as a filename such as `README.md.gotmpl`, helm-docs uses the loaded template body. If the loaded templates only define named templates, helm-docs uses the built-in README body. A missing shared or absolute path still appends the built-in README body.
+
+To override a named template for a single chart, list the shared template first and the chart's optional override file last. Start and end each named template definition in the same file.
 
 In addition to extra defined templates you specify in these template files, there are quite a few built-in templates that
 can be used as well:
