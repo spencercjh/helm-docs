@@ -1,6 +1,8 @@
 package helm
 
 import (
+	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -9,6 +11,10 @@ const (
 )
 
 func ParseComment(commentLines []string) (string, ChartValueDescription) {
+	commentLines = withoutSchemaAnnotations(commentLines)
+	if len(commentLines) == 0 {
+		return "", ChartValueDescription{}
+	}
 	var valueKey string
 	var c ChartValueDescription
 	var docStartIdx int
@@ -88,4 +94,33 @@ func ParseComment(commentLines []string) (string, ChartValueDescription) {
 		}
 	}
 	return valueKey, c
+}
+
+var schemaAnnotationRegex = regexp.MustCompile(`^[ \t]*#[ \t]+@schema(?:[ \t]+(.*))?$`)
+
+func withoutSchemaAnnotations(lines []string) []string {
+	first := slices.IndexFunc(lines, schemaAnnotationRegex.MatchString)
+	if first < 0 {
+		return lines
+	}
+
+	filtered := slices.Clone(lines[:first])
+	for i := first; i < len(lines); i++ {
+		match := schemaAnnotationRegex.FindStringSubmatch(lines[i])
+		if match == nil {
+			filtered = append(filtered, lines[i])
+			continue
+		}
+		if strings.TrimSpace(match[1]) == "" {
+			// Skip a multiline block only when it has a closing marker.
+			end := slices.IndexFunc(lines[i+1:], func(line string) bool {
+				closing := schemaAnnotationRegex.FindStringSubmatch(line)
+				return closing != nil && strings.TrimSpace(closing[1]) == ""
+			})
+			if end >= 0 {
+				i += end + 1
+			}
+		}
+	}
+	return filtered
 }
