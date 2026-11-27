@@ -18,6 +18,10 @@ fmt:
 test:
 	go test -v ./...
 
+.PHONY: test-e2e
+test-e2e:
+	go test -v -count=1 ./test/e2e
+
 .PHONY: gosec
 gosec:
 	@which gosec > /dev/null || go install github.com/securego/gosec/v2/cmd/gosec@latest
@@ -41,6 +45,7 @@ help:
 	@echo "  install      - Install the helm-docs binary"
 	@echo "  fmt          - Format Go code"
 	@echo "  test         - Run tests"
+	@echo "  test-e2e     - Run end-to-end tests"
 	@echo "  gosec        - Run security scan with gosec"
 	@echo "  lint         - Run all linters (fmt, gosec)"
 	@echo "  clean        - Clean build artifacts"
