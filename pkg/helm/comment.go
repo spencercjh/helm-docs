@@ -4,11 +4,25 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
 	PrefixComment = "# --"
 )
+
+// ParseNodeComment returns the description from a new-style comment attached to a YAML node.
+func ParseNodeComment(node *yaml.Node) ChartValueDescription {
+	if node == nil || !strings.Contains(node.HeadComment, PrefixComment) {
+		return ChartValueDescription{}
+	}
+	key, description := ParseComment(strings.Split(node.HeadComment, "\n"))
+	if key != "" {
+		return ChartValueDescription{}
+	}
+	return description
+}
 
 // yaml.v3 may attach a standalone section and the next value description to
 // the same HeadComment. A physical blank line ends the section; a bare "#"

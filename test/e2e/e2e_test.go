@@ -203,6 +203,60 @@ func TestUmbrellaFileDependencyAliasAndSelectiveGeneration(t *testing.T) {
 	requireFileNotExists(t, filepath.Join(workspace, siblingRelPath, "README.md"))
 }
 
+func TestStrictValidationRespectsChartSelection(t *testing.T) {
+	parent := filepath.Join("charts", "parent")
+	child := filepath.Join("charts", "child")
+	const sentinel = "previous README\n"
+
+	for _, tc := range []struct {
+		name     string
+		flags    []string
+		wantLint bool
+	}{
+		{name: "selected parent", flags: []string{"-g", parent}},
+		{name: "selected child fails", flags: []string{"-g", parent + "," + child}, wantLint: true},
+		{name: "all charts checked when no selection is given", wantLint: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			workspace := newWorkspace(t)
+			writeChartFixture(t, filepath.Join(workspace, parent), chartFixture{
+				ValuesYAML: "# -- Parent setting\nenabled: true\n",
+				Dependencies: []chartDependencyFixture{{
+					Name: "child", Version: "0.1.0", Repository: "file://../child",
+				}},
+			})
+			writeChartFixture(t, filepath.Join(workspace, child), chartFixture{
+				ValuesYAML: "# -- Provided by the child chart\nchildSetting: true\n\nundocumented: true\n",
+			})
+			parentReadme := filepath.Join(workspace, parent, "README.md")
+			childReadme := filepath.Join(workspace, child, "README.md")
+			writeTextFile(t, parentReadme, sentinel)
+			writeTextFile(t, childReadme, sentinel)
+
+			res := runHelmDocs(t, cliInvocation{
+				Workspace: workspace,
+				Dir:       workspace,
+				Args:      append([]string{"-c", "charts", "-u", "-x"}, tc.flags...),
+			})
+			assert.Equal(t, sentinel, readTextFile(t, childReadme))
+			if tc.wantLint {
+				requireNaturalNonZeroExit(t, res)
+				assert.Equal(t, 1, res.ExitCode)
+				assert.Contains(t, res.Stderr, "chart child: values without documentation:")
+				assert.Contains(t, res.Stderr, "undocumented")
+				assert.Equal(t, sentinel, readTextFile(t, parentReadme))
+				return
+			}
+
+			requireExitZero(t, res)
+			valuesSection := extractValuesSection(t, readTextFile(t, parentReadme))
+			assert.Contains(t, valuesSection, "| enabled | bool | `true` | Parent setting |")
+			assert.Contains(t, valuesSection, "| child.childSetting | bool | `true` | Provided by the child chart |")
+			assert.Contains(t, valuesSection, "| child.undocumented | bool | `true` |  |")
+		})
+	}
+}
+
 func TestCustomValuesOutputAndFilter(t *testing.T) {
 	workspace := newWorkspace(t)
 	chartDir := filepath.Join(workspace, "custom-io-chart")

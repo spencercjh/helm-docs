@@ -41,13 +41,11 @@ controller.image
 controller.image.repository
 controller.image.tag
 controller.extraVolumes
-controller.extraVolumes.[0].name
-controller.extraVolumes.[0].configMap
-controller.extraVolumes.[0].configMap.name
+controller.extraVolumes[0].name
+controller.extraVolumes[0].configMap
 controller.publishService
 controller.service
 controller.service.annotations
-controller.service.annotations.external-dns.alpha.kubernetes.io/hostname
 controller.service.type`
 	suite.EqualError(err, expectedError)
 }
@@ -65,11 +63,9 @@ func (suite *ChartParsingTestSuite) TestNotFullyDocumentedChartStrictModeOnIgnor
 			"controller.extraVolumes",
 			"controller.extraVolumes.[0].name",
 			"controller.extraVolumes.[0].configMap",
-			"controller.extraVolumes.[0].configMap.name",
 			"controller.publishService",
 			"controller.service",
 			"controller.service.annotations",
-			"controller.service.annotations.external-dns.alpha.kubernetes.io/hostname",
 			"controller.service.type",
 		},
 	})

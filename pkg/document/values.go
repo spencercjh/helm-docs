@@ -31,29 +31,6 @@ const (
 	timestampTag = "!!timestamp"
 )
 
-func formatNextListKeyPrefix(prefix string, index int) string {
-	return fmt.Sprintf("%s[%d]", prefix, index)
-}
-
-func formatNextObjectKeyPrefix(prefix string, key string) string {
-	var escapedKey string
-	var nextPrefix string
-
-	if strings.Contains(key, ".") || strings.Contains(key, " ") {
-		escapedKey = fmt.Sprintf(`"%s"`, key)
-	} else {
-		escapedKey = key
-	}
-
-	if prefix != "" {
-		nextPrefix = fmt.Sprintf("%s.%s", prefix, escapedKey)
-	} else {
-		nextPrefix = fmt.Sprintf("%s", escapedKey)
-	}
-
-	return nextPrefix
-}
-
 func getTypeName(value interface{}) string {
 	switch value.(type) {
 	case bool:
@@ -140,27 +117,6 @@ func markdownCodeSpanForJSON(value string) string {
 	return delimiter + value + delimiter
 }
 
-func getDescriptionFromNode(node *yaml.Node) helm.ChartValueDescription {
-	if node == nil {
-		return helm.ChartValueDescription{}
-	}
-
-	if node.HeadComment == "" {
-		return helm.ChartValueDescription{}
-	}
-
-	if !strings.Contains(node.HeadComment, helm.PrefixComment) {
-		return helm.ChartValueDescription{}
-	}
-	commentLines := strings.Split(node.HeadComment, "\n")
-	keyFromComment, c := helm.ParseComment(commentLines)
-	if keyFromComment != "" {
-		return helm.ChartValueDescription{}
-	}
-
-	return c
-}
-
 func createValueRow(
 	key string,
 	value interface{},
@@ -230,7 +186,7 @@ func createValueRowsFromList(
 	documentLeafNodes bool,
 ) ([]valueRow, error) {
 	description, hasDescription := keysToDescriptions[prefix]
-	autoDescription := getDescriptionFromNode(key)
+	autoDescription := helm.ParseNodeComment(key)
 
 	// If we encounter an empty list, it should be documented if no parent object or list had a description or if this
 	// list has a description
@@ -297,7 +253,7 @@ func createValueRowsFromList(
 
 	// Generate documentation rows for all list items and their potential sub-fields
 	for i, v := range values.Content {
-		nextPrefix := formatNextListKeyPrefix(prefix, i)
+		nextPrefix := helm.AppendValueIndex(prefix, i)
 		valueRowsForListField, err := createValueRowsFromField(nextPrefix, v, v, keysToDescriptions, documentLeafNodes)
 
 		if err != nil {
@@ -318,7 +274,7 @@ func createValueRowsFromObject(
 	documentLeafNodes bool,
 ) ([]valueRow, error) {
 	description, hasDescription := keysToDescriptions[nextPrefix]
-	autoDescription := getDescriptionFromNode(key)
+	autoDescription := helm.ParseNodeComment(key)
 
 	if len(values.Content) == 0 {
 		// if the first level of recursion has no values, then there are no values at all, and so we return zero rows of documentation
@@ -389,7 +345,7 @@ func createValueRowsFromObject(
 	for i := 0; i < len(values.Content); i += 2 {
 		k := values.Content[i]
 		v := values.Content[i+1]
-		nextPrefix := formatNextObjectKeyPrefix(nextPrefix, k.Value)
+		nextPrefix := helm.AppendValueKey(nextPrefix, k.Value)
 		valueRowsForObjectField, err := createValueRowsFromField(nextPrefix, k, v, keysToDescriptions, documentLeafNodes)
 
 		if err != nil {
@@ -417,7 +373,7 @@ func createValueRowsFromField(
 	case yaml.AliasNode:
 		return createValueRowsFromField(prefix, key, value.Alias, keysToDescriptions, documentLeafNodes)
 	case yaml.ScalarNode:
-		autoDescription := getDescriptionFromNode(key)
+		autoDescription := helm.ParseNodeComment(key)
 		description, hasDescription := keysToDescriptions[prefix]
 		if !(documentLeafNodes || hasDescription || autoDescription.Description != "") {
 			return []valueRow{}, nil

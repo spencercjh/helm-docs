@@ -88,6 +88,15 @@ type ChartValuesDocumentationParsingConfig struct {
 	AllowedMissingValueRegexps []*regexp.Regexp
 }
 
+// UndocumentedValuesError lists the value paths that failed strict documentation validation.
+type UndocumentedValuesError struct {
+	Paths []string
+}
+
+func (e *UndocumentedValuesError) Error() string {
+	return "values without documentation: \n" + strings.Join(e.Paths, "\n")
+}
+
 func getYamlFileContents(filename string) ([]byte, error) {
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		return nil, err
@@ -183,50 +192,53 @@ func checkDocumentation(rootNode *yaml.Node, comments map[string]ChartValueDescr
 	if len(rootNode.Content) == 0 {
 		return nil
 	}
-	valuesWithoutDocs := collectValuesWithoutDoc(rootNode.Content[0], comments, make([]string, 0))
+	valuesWithoutDocs := collectValuesWithoutDoc(rootNode.Content[0], comments, "", nil)
 	valuesWithoutDocsAfterIgnore := make([]string, 0)
 	for _, valueWithoutDoc := range valuesWithoutDocs {
 		ignored := false
 		for _, ignorableValuePath := range config.AllowedMissingValuePaths {
-			ignored = ignored || valueWithoutDoc == ignorableValuePath
+			ignored = ignored || valueWithoutDoc.rendered == ignorableValuePath || valueWithoutDoc.legacy == ignorableValuePath
 		}
 		for _, ignorableValueRegexp := range config.AllowedMissingValueRegexps {
-			ignored = ignored || ignorableValueRegexp.MatchString(valueWithoutDoc)
+			ignored = ignored || ignorableValueRegexp.MatchString(valueWithoutDoc.rendered) || ignorableValueRegexp.MatchString(valueWithoutDoc.legacy)
 		}
 		if !ignored {
-			valuesWithoutDocsAfterIgnore = append(valuesWithoutDocsAfterIgnore, valueWithoutDoc)
+			valuesWithoutDocsAfterIgnore = append(valuesWithoutDocsAfterIgnore, valueWithoutDoc.rendered)
 		}
 	}
 	if len(valuesWithoutDocsAfterIgnore) > 0 {
-		return fmt.Errorf("values without documentation: \n%s", strings.Join(valuesWithoutDocsAfterIgnore, "\n"))
+		return &UndocumentedValuesError{Paths: valuesWithoutDocsAfterIgnore}
 	}
 	return nil
 }
 
-func collectValuesWithoutDoc(node *yaml.Node, comments map[string]ChartValueDescription, currentPath []string) []string {
-	valuesWithoutDocs := make([]string, 0)
+type valueDocumentationPath struct {
+	rendered string
+	legacy   string // Existing ignore flags may use unquoted keys or a dot before a list index.
+}
+
+func collectValuesWithoutDoc(node *yaml.Node, comments map[string]ChartValueDescription, currentPath string, legacyPath []string) []valueDocumentationPath {
+	valuesWithoutDocs := make([]valueDocumentationPath, 0)
 	switch node.Kind {
 	case yaml.MappingNode:
 		for i := 0; i < len(node.Content); i += 2 {
 			keyNode, valueNode := node.Content[i], node.Content[i+1]
-			currentPath = append(currentPath, keyNode.Value)
-			pathString := strings.Join(currentPath, ".")
-			if _, ok := comments[pathString]; !ok {
-				valuesWithoutDocs = append(valuesWithoutDocs, pathString)
+			childPath := AppendValueKey(currentPath, keyNode.Value)
+			if _, ok := comments[childPath]; ok || ParseNodeComment(keyNode).Description != "" {
+				continue
 			}
-
-			childValuesWithoutDoc := collectValuesWithoutDoc(valueNode, comments, currentPath)
-			valuesWithoutDocs = append(valuesWithoutDocs, childValuesWithoutDoc...)
-
-			currentPath = currentPath[:len(currentPath)-1]
+			childLegacyPath := append(legacyPath, keyNode.Value)
+			valuesWithoutDocs = append(valuesWithoutDocs, valueDocumentationPath{rendered: childPath, legacy: strings.Join(childLegacyPath, ".")})
+			valuesWithoutDocs = append(valuesWithoutDocs, collectValuesWithoutDoc(valueNode, comments, childPath, childLegacyPath)...)
 		}
 	case yaml.SequenceNode:
-		for i := 0; i < len(node.Content); i++ {
-			valueNode := node.Content[i]
-			currentPath = append(currentPath, fmt.Sprintf("[%d]", i))
-			childValuesWithoutDoc := collectValuesWithoutDoc(valueNode, comments, currentPath)
-			valuesWithoutDocs = append(valuesWithoutDocs, childValuesWithoutDoc...)
-			currentPath = currentPath[:len(currentPath)-1]
+		for i, valueNode := range node.Content {
+			childPath := AppendValueIndex(currentPath, i)
+			if _, ok := comments[childPath]; ok || ParseNodeComment(valueNode).Description != "" {
+				continue
+			}
+			childLegacyPath := append(legacyPath, AppendValueIndex("", i))
+			valuesWithoutDocs = append(valuesWithoutDocs, collectValuesWithoutDoc(valueNode, comments, childPath, childLegacyPath)...)
 		}
 	}
 	return valuesWithoutDocs
