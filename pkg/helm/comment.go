@@ -4,11 +4,25 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
 	PrefixComment = "# --"
 )
+
+// ParseNodeComment returns the description from a new-style comment attached to a YAML node.
+func ParseNodeComment(node *yaml.Node) ChartValueDescription {
+	if node == nil || !strings.Contains(node.HeadComment, PrefixComment) {
+		return ChartValueDescription{}
+	}
+	key, description := ParseComment(strings.Split(node.HeadComment, "\n"))
+	if key != "" {
+		return ChartValueDescription{}
+	}
+	return description
+}
 
 func ParseComment(commentLines []string) (string, ChartValueDescription) {
 	commentLines = withoutSchemaAnnotations(commentLines)

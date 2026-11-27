@@ -98,6 +98,7 @@ func readDocumentationInfoByChartPath(chartSearchRoot string, parallelism int) (
 
 	documentationInfoByChartPath := make(map[string]helm.ChartDocumentationInfo, len(chartDirs))
 	documentationInfoByChartPathMu := &sync.Mutex{}
+	var lintErrors []error
 	documentationParsingConfig, err := getDocumentationParsingConfigFromArgs()
 	if err != nil {
 		return nil, fmt.Errorf("error parsing the linting config%w", err)
@@ -107,6 +108,13 @@ func readDocumentationInfoByChartPath(chartSearchRoot string, parallelism int) (
 		chartDir := elem.(string)
 		info, err := helm.ParseChartInformation(filepath.Join(chartSearchRoot, chartDir), documentationParsingConfig)
 		if err != nil {
+			var undocumented *helm.UndocumentedValuesError
+			if errors.As(err, &undocumented) {
+				documentationInfoByChartPathMu.Lock()
+				lintErrors = append(lintErrors, fmt.Errorf("chart %s: %w", chartDir, err))
+				documentationInfoByChartPathMu.Unlock()
+				return
+			}
 			log.Warnf("Error parsing information for chart %s, skipping: %s", chartDir, err)
 			return
 		}
@@ -115,7 +123,7 @@ func readDocumentationInfoByChartPath(chartSearchRoot string, parallelism int) (
 		documentationInfoByChartPathMu.Unlock()
 	})
 
-	return documentationInfoByChartPath, nil
+	return documentationInfoByChartPath, errors.Join(lintErrors...)
 }
 
 func getChartToGenerate(documentationInfoByChartPath map[string]helm.ChartDocumentationInfo) map[string]helm.ChartDocumentationInfo {
