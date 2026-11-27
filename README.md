@@ -105,7 +105,16 @@ pre-commit install-hooks
 
 Future changes to your chart's `requirements.yaml`, `values.yaml`, `Chart.yaml`, or `README.md.gotmpl` files will cause an update to documentation when you commit.
 
-To select a different values file, pass `--values-file=values-prod.yaml` in the hook's `args`. When you run `helm-docs` directly, pass the flag on the command line.
+To generate documentation from `values-prod.yaml`, add `--values-file=values-prod.yaml` to the hook's `args`. Set the hook's `files` pattern so changes to that file also trigger the hook, including when you pin a revision with the older file filter.
+
+```yaml
+- id: helm-docs
+  files: '(^|/)(README\.md\.gotmpl|(Chart|requirements|values|values-prod)\.yaml)$'
+  args:
+    - --values-file=values-prod.yaml
+```
+
+When you run `helm-docs` directly, pass `--values-file=values-prod.yaml` on the command line.
 
 There are several variants of `pre-commit` hooks to choose from depending on your use case.
 
