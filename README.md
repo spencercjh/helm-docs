@@ -136,6 +136,17 @@ pre-commit install-hooks
 
 Future changes to your chart's `requirements.yaml`, `values.yaml`, `Chart.yaml`, or `README.md.gotmpl` files will cause an update to documentation when you commit.
 
+To generate documentation from `values-prod.yaml`, add `--values-file=values-prod.yaml` to the hook's `args`. Set the hook's `files` pattern so changes to that file also trigger the hook, including when you pin a revision with the older file filter.
+
+```yaml
+- id: helm-docs
+  files: '(^|/)(README\.md\.gotmpl|(Chart|requirements|values|values-prod)\.yaml)$'
+  args:
+    - --values-file=values-prod.yaml
+```
+
+When you run `helm-docs` directly, pass `--values-file=values-prod.yaml` on the command line.
+
 There are several variants of `pre-commit` hooks to choose from depending on your use case.
 
 #### `helm-docs`  Uses `helm-docs` binary located in your `PATH`
@@ -227,14 +238,15 @@ docker run --rm --volume "$(pwd):/helm-docs" -u $(id -u) jnorwood/helm-docs:late
 ```
 
 ## Ignoring Chart Directories
-helm-docs supports a `.helmdocsignore` file, exactly like a `.gitignore` file in which one can specify directories to ignore
-when searching for charts. Directories specified need not be charts themselves, so parent directories containing potentially
-many charts can be ignored and none of the charts underneath them will be processed. You may also directly reference the
-Chart.yaml file for a chart to skip processing for it.
+
+Place `.helmdocsignore` at the Git repository root. Outside a Git repository, place it in the directory where you run `helm-docs`.
+Write relative paths from that directory. For example, use `charts/demo/charts/` to exclude the entire dependency directory or `charts/demo/Chart.yaml` to skip a single chart.
 
 ## Generating Doc with Dependency values
 Umbrella Helm chart documentation can include dependency values with `document-dependency-values` flag.
 All dependency values will be merged into values of umbrella chart documentation.
+
+For a dependency declared as `repository: file://../child`, set `--chart-search-root` to a directory that contains both charts. To generate only the parent README, select the parent with `--chart-to-generate`.
 
 If you want to include dependency values, but don't want to generate doc for each dependency:
 * set `chart-search-root` parameter to directory that contains umbrella chart and all dependency charts.
@@ -496,6 +508,8 @@ instead of using `chart.valuesSection`. Using HTML tables provides more
 flexibility because it can be processed by markdown viewer as a nested blocks,
 instead of one row per line. This allows you to customize how each columns in a
 row are rendered.
+
+To preserve line breaks and indentation in a value description, put `# @raw` after the first description line. Use an HTML values table for multiline descriptions. See the [raw comment example](./example-charts/custom-value-notation-type/values.yaml#L203).
 
 2. Overriding built-in templates
 
