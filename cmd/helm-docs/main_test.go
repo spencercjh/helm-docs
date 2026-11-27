@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -232,101 +231,57 @@ func TestIncludesVersionFooter(t *testing.T) {
 	}
 }
 
-func TestWriteDocumentationReturnsTemplateGenerationError(t *testing.T) {
-	tmp := t.TempDir()
-	chartDir := filepath.Join(tmp, "broken-template")
-
-	if err := os.MkdirAll(chartDir, 0755); err != nil {
-		t.Fatal(err)
+func TestWriteDocumentationReportsFailedChartsAndPreservesReadmes(t *testing.T) {
+	root := t.TempDir()
+	templates := map[string]string{
+		"bad-syntax": "{{ if }}",
+		"bad-field":  "partial output {{ .MissingField }}",
+		"good":       "updated",
 	}
-
-	if err := os.WriteFile(filepath.Join(chartDir, "Chart.yaml"), []byte("apiVersion: v2\nname: broken-template\nversion: 0.1.0\n"), 0644); err != nil {
-		t.Fatal(err)
+	for name, template := range templates {
+		dir := filepath.Join(root, name)
+		if err := os.Mkdir(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		for path, content := range map[string]string{
+			"Chart.yaml":       "apiVersion: v2\nname: " + name + "\nversion: 1.0.0\n",
+			"values.yaml":      "{}\n",
+			"README.md.gotmpl": template,
+			"README.md":        "previous",
+		} {
+			if err := os.WriteFile(filepath.Join(dir, path), []byte(content), 0644); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
-	if err := os.WriteFile(filepath.Join(chartDir, "values.yaml"), []byte("{}\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(chartDir, "README.md.gotmpl"), []byte("{{ .InvalidSyntax }\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
 	if err := viper.BindFlagValues(testFlagSet{
-		"chart-search-root":          tmp,
+		"chart-search-root":          root,
 		"template-files":             "README.md.gotmpl",
 		"values-file":                "values.yaml",
 		"output-file":                "README.md",
 		"ignore-file":                ".helmdocsignore",
-		"log-level":                  "warn",
-		"sort-values-order":          document.AlphaNumSortOrder,
-		"sort-sections-order":        document.AlphaNumSortOrder,
 		"document-dependency-values": false,
-		"skip-version-footer":        false,
+		"log-level":                  "warn",
 	}); err != nil {
 		t.Fatal(err)
 	}
-
-	documentationInfoByChartPath, err := readDocumentationInfoByChartPath(tmp, 1)
+	charts, err := readDocumentationInfoByChartPath(root, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	err = writeDocumentation(tmp, documentationInfoByChartPath, false, 1)
+	err = writeDocumentation(root, charts, false, 2)
 	if err == nil {
-		t.Fatal("expected template generation error, got nil")
+		t.Fatal("expected chart generation errors")
 	}
-	if !strings.Contains(err.Error(), "error generating gotemplates for chart") {
-		t.Fatalf("expected gotemplate generation error, got %v", err)
-	}
-}
-
-func TestWriteDocumentationCombinesGenerationErrors(t *testing.T) {
-	tmp := t.TempDir()
-	for _, chartName := range []string{"broken-template-a", "broken-template-b"} {
-		chartDir := filepath.Join(tmp, chartName)
-		if err := os.MkdirAll(chartDir, 0755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(chartDir, "Chart.yaml"), []byte("apiVersion: v2\nname: "+chartName+"\nversion: 0.1.0\n"), 0644); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(chartDir, "values.yaml"), []byte("{}\n"), 0644); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(chartDir, "README.md.gotmpl"), []byte("{{ .InvalidSyntax }\n"), 0644); err != nil {
-			t.Fatal(err)
+	for _, name := range []string{"bad-syntax", "bad-field"} {
+		if !strings.Contains(err.Error(), filepath.Join(root, name)) {
+			t.Errorf("error should identify chart %s: %v", name, err)
 		}
 	}
-
-	if err := viper.BindFlagValues(testFlagSet{
-		"chart-search-root":          tmp,
-		"template-files":             "README.md.gotmpl",
-		"values-file":                "values.yaml",
-		"output-file":                "README.md",
-		"ignore-file":                ".helmdocsignore",
-		"log-level":                  "warn",
-		"sort-values-order":          document.AlphaNumSortOrder,
-		"sort-sections-order":        document.AlphaNumSortOrder,
-		"document-dependency-values": false,
-		"skip-version-footer":        false,
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	documentationInfoByChartPath, err := readDocumentationInfoByChartPath(tmp, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = writeDocumentation(tmp, documentationInfoByChartPath, false, 2)
-	if err == nil {
-		t.Fatal("expected combined template generation error, got nil")
-	}
-
-	var unwrapped interface{ Unwrap() []error }
-	if !errors.As(err, &unwrapped) {
-		t.Fatalf("expected joined errors, got %T", err)
-	}
-	if got := len(unwrapped.Unwrap()); got != 2 {
-		t.Fatalf("expected 2 joined errors, got %d", got)
+	for name, want := range map[string]string{"bad-syntax": "previous", "bad-field": "previous", "good": "updated"} {
+		got, err := os.ReadFile(filepath.Join(root, name, "README.md"))
+		if err != nil || string(got) != want {
+			t.Errorf("%s README = %q, %v; want %q", name, got, err, want)
+		}
 	}
 }

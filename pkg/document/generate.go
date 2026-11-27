@@ -46,6 +46,14 @@ func PrintDocumentation(chartDocumentationInfo helm.ChartDocumentationInfo, char
 		return fmt.Errorf("error generating template data for chart %s: %w", chartDocumentationInfo.ChartDirectory, err)
 	}
 
+	var output bytes.Buffer
+	err = chartDocumentationTemplate.Execute(&output, chartTemplateDataObject)
+	if err != nil {
+		return fmt.Errorf("error generating documentation for chart %s: %w", chartDocumentationInfo.ChartDirectory, err)
+	}
+
+	output = applyMarkDownFormat(output)
+
 	outputFile, err := getOutputFile(chartDocumentationInfo.ChartDirectory, dryRun)
 	if err != nil {
 		return fmt.Errorf("could not open chart README file %s: %w", filepath.Join(chartDocumentationInfo.ChartDirectory, viper.GetString("output-file")), err)
@@ -58,13 +66,6 @@ func PrintDocumentation(chartDocumentationInfo helm.ChartDocumentationInfo, char
 		}()
 	}
 
-	var output bytes.Buffer
-	err = chartDocumentationTemplate.Execute(&output, chartTemplateDataObject)
-	if err != nil {
-		return fmt.Errorf("error generating documentation for chart %s: %w", chartDocumentationInfo.ChartDirectory, err)
-	}
-
-	output = applyMarkDownFormat(output)
 	_, err = output.WriteTo(outputFile)
 	if err != nil {
 		return fmt.Errorf("error generating documentation file for chart %s: %w", chartDocumentationInfo.ChartDirectory, err)
