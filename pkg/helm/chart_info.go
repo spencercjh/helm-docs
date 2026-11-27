@@ -23,6 +23,10 @@ var valueTypeRegex = regexp.MustCompile("^\\((.*?)\\)\\s*(.*)$")
 var valueNotationTypeRegex = regexp.MustCompile("^\\s*#\\s+@notationType\\s+--\\s+(.*)$")
 var sectionRegex = regexp.MustCompile("^\\s*# @section -- (.*)$")
 
+func isInternalComment(line string) bool {
+	return strings.HasPrefix(strings.TrimLeft(line, " \t"), "##")
+}
+
 type ChartMetaMaintainer struct {
 	Email string
 	Name  string
@@ -255,6 +259,9 @@ func parseChartValuesFileComments(chartDirectory string, values *yaml.Node, lint
 	for scanner.Scan() {
 		currentLineIdx++
 		currentLine := scanner.Text()
+		if isInternalComment(currentLine) {
+			continue
+		}
 
 		// If we've not yet found a values comment with a key name, try and find one on each line
 		if !foundValuesComment {

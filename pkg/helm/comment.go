@@ -11,7 +11,7 @@ const (
 func ParseComment(commentLines []string) (string, ChartValueDescription) {
 	var valueKey string
 	var c ChartValueDescription
-	var docStartIdx int
+	docStartIdx := -1
 
 	// Work around https://github.com/norwoodj/helm-docs/issues/96 by considering only
 	// the last "group" of comment lines starting with '# --'.
@@ -27,6 +27,9 @@ func ParseComment(commentLines []string) (string, ChartValueDescription) {
 	}
 
 	for i := range commentLines {
+		if isInternalComment(commentLines[i]) {
+			continue
+		}
 		match := valuesDescriptionRegex.FindStringSubmatch(commentLines[i])
 		if len(match) < 3 {
 			continue
@@ -36,6 +39,9 @@ func ParseComment(commentLines []string) (string, ChartValueDescription) {
 		c.Description = match[2]
 		docStartIdx = i
 		break
+	}
+	if docStartIdx < 0 {
+		return "", ChartValueDescription{}
 	}
 
 	valueTypeMatch := valueTypeRegex.FindStringSubmatch(c.Description)
@@ -47,6 +53,9 @@ func ParseComment(commentLines []string) (string, ChartValueDescription) {
 	var isRaw = false
 
 	for _, line := range commentLines[docStartIdx+1:] {
+		if isInternalComment(line) {
+			continue
+		}
 		rawFlagMatch := rawDescriptionRegex.FindStringSubmatch(line)
 		defaultCommentMatch := defaultValueRegex.FindStringSubmatch(line)
 		notationTypeCommentMatch := valueNotationTypeRegex.FindStringSubmatch(line)
