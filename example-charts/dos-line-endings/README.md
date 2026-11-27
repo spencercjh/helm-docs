@@ -12,4 +12,3 @@ A chart whose values file has dos line endings rather than unix ones
 | controller.replicas | int | `2` | Number of nginx-ingress pods to load balance between sdf. Do not set this below 2. |
 | livenessProbe.httpGet.path | string | `"/healthz"` | This is the liveness check endpoint |
 | livenessProbe.httpGet.port | string | `"http"` |  |
-

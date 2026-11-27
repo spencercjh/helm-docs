@@ -1,6 +1,8 @@
 package helm
 
 import (
+	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -8,10 +10,41 @@ const (
 	PrefixComment = "# --"
 )
 
+// yaml.v3 may attach a standalone section and the next value description to
+// the same HeadComment. A physical blank line ends the section; a bare "#"
+// is a blank line within its Markdown body.
+func withoutExtraSections(lines []string) []string {
+	var valueLines []string
+	start := 0
+	for i := 0; i < len(lines); i++ {
+		if !extraRegex.MatchString(lines[i]) {
+			continue
+		}
+		valueLines = append(valueLines, lines[start:i]...)
+		for i < len(lines) && strings.TrimSpace(lines[i]) != "" {
+			i++
+		}
+		start = i
+	}
+	if start == 0 {
+		return lines
+	}
+	return append(valueLines, lines[start:]...)
+}
+
 func ParseComment(commentLines []string) (string, ChartValueDescription) {
+	commentLines = withoutSchemaAnnotations(commentLines)
+	if len(commentLines) == 0 {
+		return "", ChartValueDescription{}
+	}
 	var valueKey string
 	var c ChartValueDescription
 	docStartIdx := -1
+
+	commentLines = withoutExtraSections(commentLines)
+	if len(commentLines) == 0 {
+		return valueKey, c
+	}
 
 	// Work around https://github.com/norwoodj/helm-docs/issues/96 by considering only
 	// the last "group" of comment lines starting with '# --'.
@@ -97,4 +130,33 @@ func ParseComment(commentLines []string) (string, ChartValueDescription) {
 		}
 	}
 	return valueKey, c
+}
+
+var schemaAnnotationRegex = regexp.MustCompile(`^[ \t]*#[ \t]+@schema(?:[ \t]+(.*))?$`)
+
+func withoutSchemaAnnotations(lines []string) []string {
+	first := slices.IndexFunc(lines, schemaAnnotationRegex.MatchString)
+	if first < 0 {
+		return lines
+	}
+
+	filtered := slices.Clone(lines[:first])
+	for i := first; i < len(lines); i++ {
+		match := schemaAnnotationRegex.FindStringSubmatch(lines[i])
+		if match == nil {
+			filtered = append(filtered, lines[i])
+			continue
+		}
+		if strings.TrimSpace(match[1]) == "" {
+			// Skip a multiline block only when it has a closing marker.
+			end := slices.IndexFunc(lines[i+1:], func(line string) bool {
+				closing := schemaAnnotationRegex.FindStringSubmatch(line)
+				return closing != nil && strings.TrimSpace(closing[1]) == ""
+			})
+			if end >= 0 {
+				i += end + 1
+			}
+		}
+	}
+	return filtered
 }

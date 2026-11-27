@@ -126,6 +126,8 @@ Kubernetes: `<=1.18`
 
 ## Values
 
+## `chart.extras`
+
 ## `chart.valuesTable`
 
 | Key | Type | Default | Description |
@@ -161,4 +163,3 @@ Kubernetes: `<=1.18`
 | controller.replicas | int | `nil` | Number of nginx-ingress pods to load balance between |
 | controller.service.annotations."external-dns.alpha.kubernetes.io/hostname" | string | `"stupidchess.jmn23.com"` | Hostname to be assigned to the ELB for the service |
 | controller.service.type | string | `"LoadBalancer"` |  |
-

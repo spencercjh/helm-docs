@@ -1,24 +1,27 @@
-package helm
+package helm_test
 
 import (
-	"strings"
 	"testing"
 
+	"github.com/norwoodj/helm-docs/pkg/helm"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestParseCommentSkipsDoubleHashLines(t *testing.T) {
-	for _, tc := range []struct {
-		name, comments, key, description string
-	}{
-		{"anonymous", "# -- Context\n## internal\n# for notifications", "", "Context for notifications"},
-		{"named", "  ## other -- internal\n  # context -- Context\n  ## internal\n  ##\n  # for notifications", "context", "Context for notifications"},
-		{"raw", "  # context -- Context\n  # @raw\n  ## internal\n  #   indented example", "context", "Context\n  indented example"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			key, doc := ParseComment(strings.Split(tc.comments, "\n"))
-			assert.Equal(t, tc.key, key)
-			assert.Equal(t, tc.description, doc.Description)
-		})
-	}
+func TestParseCommentStopsAtExtra(t *testing.T) {
+	key, c := helm.ParseComment([]string{
+		"# -- List of persistent volume claims to create.",
+		"# For very long comments, break them into multiple lines.",
+		"# @default -- the chart will construct this list internally unless specified",
+		"# @extra -- Volume Claim Template",
+		"# The volume claim template is used to create a `PersistentVolumeClaim`.",
+	})
+	assert.Equal(t, "", key)
+	assert.Equal(t, "List of persistent volume claims to create. For very long comments, break them into multiple lines.", c.Description)
+	assert.Equal(t, "the chart will construct this list internally unless specified", c.Default)
+}
+
+func TestParseCommentEmpty(t *testing.T) {
+	key, c := helm.ParseComment(nil)
+	assert.Equal(t, "", key)
+	assert.Equal(t, helm.ChartValueDescription{}, c)
 }

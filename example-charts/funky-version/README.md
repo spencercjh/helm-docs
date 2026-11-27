@@ -15,4 +15,3 @@ A very simple chart with a funky version
 ## Source Code
 
 * <https://github.com/norwoodj/helm-docs/tree/master/example-charts/funky-version>
-

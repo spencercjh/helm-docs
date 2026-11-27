@@ -77,18 +77,49 @@ mise use -g helm-docs@latest
 This will download and install the [latest release](https://github.com/norwoodj/helm-docs/releases/latest)
 of the tool.
 
-To build from source in this repository:
+To build from this checkout, use the Go version declared in [go.mod](./go.mod) or a newer version:
 
 ```bash
 cd cmd/helm-docs
 go build
 ```
 
-Or install from source:
+To install the latest tagged release with Go, use the Go version declared by that release. Upstream v1.14.2 requires Go 1.22.0 or later.
 
 ```bash
 go install github.com/norwoodj/helm-docs/cmd/helm-docs@latest
 ```
+
+### Release packages
+
+Download the archive or package for your operating system and CPU architecture from [upstream releases](https://github.com/norwoodj/helm-docs/releases). Extract the `helm-docs` binary from the archive and place it in a directory on your `PATH`.
+
+For Debian or Ubuntu, download the `.deb` package and install it with `apt`. For Fedora or RHEL, download the `.rpm` package and install it with `dnf`. These commands use local packages downloaded from the release page.
+
+```sh
+sudo apt install ./helm-docs_1.14.2_Linux_x86_64.deb
+sudo dnf install ./helm-docs_1.14.2_Linux_x86_64.rpm
+```
+
+For pre-commit, `helm-docs-built` builds the binary with Go and `helm-docs-container` runs the published image. See [Pre-commit hook](#pre-commit-hook) for configuration.
+
+### Verify upstream release files
+
+Download your asset, `checksums.txt`, and `checksums.txt.sig` from the same release. The commands below verify the v1.14.2 signature with John Norwood's public key. Its fingerprint is `57D120E26D60F11E5BFB0B907A86FD2D954253E2`. Save the [public key](https://github.com/norwoodj.gpg) as `norwoodj.asc` in the same directory.
+
+```sh
+gpg --dearmor -o norwoodj-release.gpg norwoodj.asc
+gpgv --keyring ./norwoodj-release.gpg checksums.txt.sig checksums.txt
+```
+
+After `gpgv` reports a good signature, check the downloaded file. Set `asset` to the filename you downloaded.
+
+```sh
+asset=helm-docs_1.14.2_Darwin_arm64.tar.gz
+awk -v file="$asset" '$2 == file' checksums.txt | shasum -a 256 -c
+```
+
+Wait for the checksum command to report `OK` before installing the asset.
 
 ## Usage
 
@@ -104,6 +135,17 @@ pre-commit install-hooks
 ```
 
 Future changes to your chart's `requirements.yaml`, `values.yaml`, `Chart.yaml`, or `README.md.gotmpl` files will cause an update to documentation when you commit.
+
+To generate documentation from `values-prod.yaml`, add `--values-file=values-prod.yaml` to the hook's `args`. Set the hook's `files` pattern so changes to that file also trigger the hook, including when you pin a revision with the older file filter.
+
+```yaml
+- id: helm-docs
+  files: '(^|/)(README\.md\.gotmpl|(Chart|requirements|values|values-prod)\.yaml)$'
+  args:
+    - --values-file=values-prod.yaml
+```
+
+When you run `helm-docs` directly, pass `--values-file=values-prod.yaml` on the command line.
 
 There are several variants of `pre-commit` hooks to choose from depending on your use case.
 
@@ -196,14 +238,15 @@ docker run --rm --volume "$(pwd):/helm-docs" -u $(id -u) jnorwood/helm-docs:late
 ```
 
 ## Ignoring Chart Directories
-helm-docs supports a `.helmdocsignore` file, exactly like a `.gitignore` file in which one can specify directories to ignore
-when searching for charts. Directories specified need not be charts themselves, so parent directories containing potentially
-many charts can be ignored and none of the charts underneath them will be processed. You may also directly reference the
-Chart.yaml file for a chart to skip processing for it.
+
+Place `.helmdocsignore` at the Git repository root. Outside a Git repository, place it in the directory where you run `helm-docs`.
+Write relative paths from that directory. For example, use `charts/demo/charts/` to exclude the entire dependency directory or `charts/demo/Chart.yaml` to skip a single chart.
 
 ## Generating Doc with Dependency values
 Umbrella Helm chart documentation can include dependency values with `document-dependency-values` flag.
 All dependency values will be merged into values of umbrella chart documentation.
+
+For a dependency declared as `repository: file://../child`, set `--chart-search-root` to a directory that contains both charts. To generate only the parent README, select the parent with `--chart-to-generate`.
 
 If you want to include dependency values, but don't want to generate doc for each dependency:
 * set `chart-search-root` parameter to directory that contains umbrella chart and all dependency charts.
@@ -243,6 +286,7 @@ can be used as well:
 | chart.typeBadge                      | A badge stating the current type of the chart |
 | chart.appVersion                     | The _appVersion_ field from the chart's `Chart.yaml` file |
 | chart.appVersionBadge                | A badge stating the current appVersion of the chart |
+| chart.extras                         | All extra sections (ordered by title) |
 | chart.homepage                       | The _home_ link from the chart's `Chart.yaml` file, or "" if that field is not set |
 | chart.homepageLine                   | A text line stating the current homepage of the chart |
 | chart.maintainersHeader              | The heading for the chart maintainers section |
@@ -290,6 +334,8 @@ The default internal template mentioned above uses many of these and looks like 
 
 {{ template "chart.valuesSection" . }}
 
+{{ template "chart.extras" . }}
+
 {{ template "helm-docs.versionFooter" . }}
 
 ```
@@ -329,6 +375,8 @@ controller:
 
 New-style comments are much the same as the old-style comments, except that while old comments for a field could appear
 anywhere in the file, new-style comments must appear **on the line(s) immediately preceding the field being documented.**
+
+Single-line `# @schema` annotations and blocks between two standalone `# @schema` lines are omitted from generated descriptions.
 
 I invite you to check out the [example-charts](./example-charts) to see how this is done in practice. The `but-auto-comments`
 examples in particular document the new comment format.
@@ -440,6 +488,29 @@ configMap:
   not real config param: value
 ```
 
+### Extra sections
+You can define extra documentation (rendered after the values) that can contain any markdown. This can be done
+using the `@extra -- <title>` tag. All comment lines after this tag, up to the next non-comment line or the next
+`@extra` tag, are rendered under a heading with the given title. Markdown supports anchors for each title
+(lowercase with hyphens), so you can link to the extra documentation from the value descriptions. This is often
+useful to provide more details and/or examples for a given value.
+
+Sections appear in alphabetical order by title. Give each section a unique title. If a title appears more than once,
+helm-docs uses the last block with that title.
+
+An `@extra` tag can follow the description of a value (and its `@default`, `@section`, ... tags). It ends the
+description of that value, so put it after all other tags:
+
+```yaml
+# -- Storage class to use. See [Storage](#storage) for details.
+# @default -- the cluster default
+# @extra -- Storage
+# Any markdown, including code blocks and lists.
+storageClass: ""
+```
+
+See [here](./example-charts/extra-sections/README.md) for an example.
+
 ### Advanced table rendering
 Some helm chart `values.yaml` uses complicated structure for the key/value
 pairs. For example, it may uses a multiline string of Go template text instead
@@ -465,6 +536,8 @@ instead of using `chart.valuesSection`. Using HTML tables provides more
 flexibility because it can be processed by markdown viewer as a nested blocks,
 instead of one row per line. This allows you to customize how each columns in a
 row are rendered.
+
+To preserve line breaks and indentation in a value description, put `# @raw` after the first description line. Use an HTML values table for multiline descriptions. See the [raw comment example](./example-charts/custom-value-notation-type/values.yaml#L203).
 
 2. Overriding built-in templates
 

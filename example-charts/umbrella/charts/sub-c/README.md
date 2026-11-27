@@ -15,4 +15,3 @@ A sub-chart.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | global | object | `{}` |  |
-

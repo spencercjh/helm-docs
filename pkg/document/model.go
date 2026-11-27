@@ -2,6 +2,7 @@ package document
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -32,6 +33,7 @@ type chartTemplateData struct {
 	HelmDocsVersion   string
 	Values            []valueRow
 	Sections          sections
+	Extras            []extra
 	Files             files
 	SkipVersionFooter bool
 }
@@ -44,6 +46,11 @@ type sections struct {
 type section struct {
 	SectionName  string
 	SectionItems []valueRow
+}
+
+type extra struct {
+	Title    string
+	MarkDown string
 }
 
 func sortValueRowsByOrder(valueRows []valueRow, sortOrder string) {
@@ -127,6 +134,11 @@ func getUnsortedValueRows(document *yaml.Node, descriptions map[string]helm.Char
 
 	if document.Kind != yaml.DocumentNode {
 		return nil, fmt.Errorf("invalid node kind supplied: %d", document.Kind)
+	}
+
+	// An empty YAML document (for example, "---") has a null scalar root.
+	if document.Content[0].Kind == yaml.ScalarNode && document.Content[0].Tag == nullTag {
+		return nil, nil
 	}
 
 	if document.Content[0].Kind != yaml.MappingNode {
@@ -220,10 +232,19 @@ func getChartTemplateData(info helm.ChartDocumentationInfo, helmDocsVersion stri
 		return chartTemplateData{}, err
 	}
 
+	var extras []extra
+	for title, markdown := range info.Extras {
+		extras = append(extras, extra{Title: title, MarkDown: markdown})
+	}
+	slices.SortFunc(extras, func(a, b extra) int {
+		return strings.Compare(a.Title, b.Title)
+	})
+
 	return chartTemplateData{
 		ChartDocumentationInfo: info,
 		HelmDocsVersion:        helmDocsVersion,
 		Values:                 valuesTableRows,
+		Extras:                 extras,
 		Sections:               valueRowsSectionSorted,
 		Files:                  files,
 		SkipVersionFooter:      skipVersionFooter,
@@ -231,7 +252,6 @@ func getChartTemplateData(info helm.ChartDocumentationInfo, helmDocsVersion stri
 }
 
 func removeRowsWithoutDescription(valuesTableRows []valueRow) []valueRow {
-
 	var valuesTableRowsWithoutDescription []valueRow
 	for i := range valuesTableRows {
 		if valuesTableRows[i].AutoDescription != "" || valuesTableRows[i].Description != "" {

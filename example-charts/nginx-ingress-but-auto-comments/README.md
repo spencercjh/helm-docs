@@ -39,4 +39,3 @@ A simple wrapper around the stable/nginx-ingress chart that adds a few of our co
 | controller.replicas | int | `nil` | Number of nginx-ingress pods to load balance between. Do not set this below 2 |
 | controller.service.annotations."external-dns.alpha.kubernetes.io/hostname" | string | `"stupidchess.jmn23.com"` | Hostname to be assigned to the ELB for the service |
 | controller.service.type | string | `"LoadBalancer"` |  |
-
