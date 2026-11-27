@@ -14,18 +14,19 @@ import (
 )
 
 type valueRow struct {
-	Key             string
-	Type            string
-	NotationType    string
-	AutoDefault     string
-	Default         string
-	AutoDescription string
-	Description     string
-	Section         string
-	Column          int
-	LineNumber      int
-	Dependency      string
-	IsGlobal        bool
+	Key                 string
+	Type                string
+	NotationType        string
+	AutoDefault         string
+	Default             string
+	AutoDescription     string
+	Description         string
+	Section             string
+	Column              int
+	LineNumber          int
+	Dependency          string
+	IsGlobal            bool
+	defaultFromRawValue bool
 }
 
 type chartTemplateData struct {

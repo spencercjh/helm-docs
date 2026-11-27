@@ -28,6 +28,10 @@ var (
 	extraContinuationRegex   = regexp.MustCompile("^\\s*# ?(.*)$")
 )
 
+func isInternalComment(line string) bool {
+	return strings.HasPrefix(strings.TrimLeft(line, " \t"), "##")
+}
+
 type ChartMetaMaintainer struct {
 	Email string
 	Name  string
@@ -263,6 +267,9 @@ func parseChartValuesFileComments(source string, values *yaml.Node, lintingConfi
 		// Inline comments and scalar content both end a standalone comment block.
 		if yamlComments != nil && strings.TrimLeft(currentLine, " \t") != yamlComments[lineNumber] {
 			currentLine = ""
+		}
+		if isInternalComment(currentLine) {
+			continue
 		}
 
 		if match := extraRegex.FindStringSubmatch(currentLine); len(match) == 2 && match[1] != "" {
