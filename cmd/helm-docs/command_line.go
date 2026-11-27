@@ -10,6 +10,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/mod/module"
+	"golang.org/x/mod/semver"
 )
 
 var version string
@@ -21,11 +23,18 @@ func init() {
 	if version != "" {
 		return
 	}
-	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
-		// The template prepends "v" to the version, and Go module
-		// versions already include the "v" prefix, so strip it.
-		version = strings.TrimPrefix(info.Main.Version, "v")
+	if info, ok := debug.ReadBuildInfo(); ok {
+		version = moduleReleaseVersion(info.Main.Version)
 	}
+}
+
+// The README footer links to a release tag. Development builds can carry a
+// Go-generated pseudo-version or a dirty working-tree suffix with no such tag.
+func moduleReleaseVersion(v string) string {
+	if !semver.IsValid(v) || module.IsPseudoVersion(v) || strings.HasSuffix(v, "+dirty") {
+		return ""
+	}
+	return strings.TrimPrefix(v, "v")
 }
 
 func possibleLogLevels() []string {
