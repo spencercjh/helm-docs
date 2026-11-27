@@ -77,18 +77,49 @@ mise use -g helm-docs@latest
 This will download and install the [latest release](https://github.com/norwoodj/helm-docs/releases/latest)
 of the tool.
 
-To build from source in this repository:
+To build from this checkout, use the Go version declared in [go.mod](./go.mod) or a newer version:
 
 ```bash
 cd cmd/helm-docs
 go build
 ```
 
-Or install from source:
+To install the latest tagged release with Go, use the Go version declared by that release. Upstream v1.14.2 requires Go 1.22.0 or later.
 
 ```bash
 go install github.com/norwoodj/helm-docs/cmd/helm-docs@latest
 ```
+
+### Release packages
+
+Download the archive or package for your operating system and CPU architecture from [upstream releases](https://github.com/norwoodj/helm-docs/releases). Extract the `helm-docs` binary from the archive and place it in a directory on your `PATH`.
+
+For Debian or Ubuntu, download the `.deb` package and install it with `apt`. For Fedora or RHEL, download the `.rpm` package and install it with `dnf`. These commands use local packages downloaded from the release page.
+
+```sh
+sudo apt install ./helm-docs_1.14.2_Linux_x86_64.deb
+sudo dnf install ./helm-docs_1.14.2_Linux_x86_64.rpm
+```
+
+For pre-commit, `helm-docs-built` builds the binary with Go and `helm-docs-container` runs the published image. See [Pre-commit hook](#pre-commit-hook) for configuration.
+
+### Verify upstream release files
+
+Download your asset, `checksums.txt`, and `checksums.txt.sig` from the same release. The commands below verify the v1.14.2 signature with John Norwood's public key. Its fingerprint is `57D120E26D60F11E5BFB0B907A86FD2D954253E2`. Save the [public key](https://github.com/norwoodj.gpg) as `norwoodj.asc` in the same directory.
+
+```sh
+gpg --dearmor -o norwoodj-release.gpg norwoodj.asc
+gpgv --keyring ./norwoodj-release.gpg checksums.txt.sig checksums.txt
+```
+
+After `gpgv` reports a good signature, check the downloaded file. Set `asset` to the filename you downloaded.
+
+```sh
+asset=helm-docs_1.14.2_Darwin_arm64.tar.gz
+awk -v file="$asset" '$2 == file' checksums.txt | shasum -a 256 -c
+```
+
+Wait for the checksum command to report `OK` before installing the asset.
 
 ## Usage
 
