@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -24,8 +25,10 @@ const (
 )
 
 var (
-	helmDocsBinPath    string
-	emptyGitConfigPath string
+	helmDocsBinPath       string
+	emptyGitConfigPath    string
+	goRuntimeCrashPattern = regexp.MustCompile(`(?m)^(?:panic:|fatal error:|goroutine \d+ \[)|level=panic\b`)
+	footerVersionPattern  = regexp.MustCompile(`\[helm-docs v([^\]]+)\]`)
 )
 
 func TestMain(m *testing.M) {
@@ -63,6 +66,7 @@ func runTestMain(m *testing.M) int {
 	buildCmd := exec.Command(
 		"go",
 		"build",
+		"-buildvcs=false",
 		"-ldflags",
 		"-X main.version="+injectedVersion,
 		"-o",
@@ -70,6 +74,8 @@ func runTestMain(m *testing.M) int {
 		"./cmd/helm-docs",
 	)
 	buildCmd.Dir = moduleRoot
+	buildEnv, _ := buildIsolatedEnv(buildDir, nil)
+	buildCmd.Env = buildEnv
 
 	var buildOutput bytes.Buffer
 	buildCmd.Stdout = &buildOutput
@@ -262,6 +268,26 @@ func requireNaturalNonZeroExit(t *testing.T, res cliResult) {
 	require.Error(t, res.RunErr, "expected non-zero exit error from subprocess")
 	require.True(t, res.Exited, "expected subprocess to terminate via normal exit rather than signal: %v", res.RunErr)
 	require.Greater(t, res.ExitCode, 0, "expected positive non-zero exit code, got %d", res.ExitCode)
+	require.NotRegexp(t, goRuntimeCrashPattern, res.Stderr, "expected controlled CLI error exit without Go panic or runtime crash on stderr")
+	require.NotRegexp(t, goRuntimeCrashPattern, res.Stdout, "expected controlled CLI error exit without Go panic or runtime crash on stdout")
+}
+
+func assertExactCLIVersionOutput(t *testing.T, stdout, wantVersion string) {
+	t.Helper()
+
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	require.Len(t, lines, 1, "expected single-line --version output, got %q", stdout)
+	fields := strings.Fields(lines[0])
+	require.Equal(t, []string{"helm-docs", "version", wantVersion}, fields,
+		"expected exact --version fields for version %q, got %q", wantVersion, lines[0])
+}
+
+func assertFooterVersionEquals(t *testing.T, markdown, wantVersion string) {
+	t.Helper()
+
+	matches := footerVersionPattern.FindStringSubmatch(markdown)
+	require.Len(t, matches, 2, "expected [helm-docs v<version>] footer in rendered markdown:\n%s", markdown)
+	require.Equal(t, wantVersion, matches[1], "expected exact footer version %q, got %q", wantVersion, matches[1])
 }
 
 func formatDiagnostics(res cliResult) string {

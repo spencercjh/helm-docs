@@ -3,6 +3,7 @@ package e2e_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,7 +37,7 @@ func TestVersionEnvFlagsAndDryRun(t *testing.T) {
 			Args:      []string{"--version"},
 		})
 		requireExitZero(t, res)
-		assert.Contains(t, res.Stdout, injectedVersion)
+		assertExactCLIVersionOutput(t, res.Stdout, injectedVersion)
 		assert.Equal(t, sentinelContent, readTextFile(t, sentinelReadmePath))
 	})
 
@@ -50,6 +51,7 @@ func TestVersionEnvFlagsAndDryRun(t *testing.T) {
 		requireExitZero(t, res)
 		assert.Contains(t, res.Stdout, "style=plastic")
 		assert.NotContains(t, res.Stdout, injectedVersion)
+		assert.NotContains(t, res.Stdout, "[helm-docs v")
 		assert.Contains(t, res.Stderr, "Generating README Documentation")
 		assert.NotContains(t, res.Stdout, "Generating README Documentation")
 		assert.Equal(t, sentinelContent, readTextFile(t, sentinelReadmePath))
@@ -70,7 +72,7 @@ func TestVersionEnvFlagsAndDryRun(t *testing.T) {
 		requireExitZero(t, dryRunRes)
 		assert.Contains(t, dryRunRes.Stdout, "style=for-the-badge")
 		assert.NotContains(t, dryRunRes.Stdout, "style=plastic")
-		assert.Contains(t, dryRunRes.Stdout, "v"+injectedVersion)
+		assertFooterVersionEquals(t, dryRunRes.Stdout, injectedVersion)
 		assert.Contains(t, dryRunRes.Stderr, "Generating README Documentation")
 		assert.NotContains(t, dryRunRes.Stdout, "Generating README Documentation")
 		assert.Equal(t, sentinelContent, readTextFile(t, sentinelReadmePath))
@@ -106,8 +108,11 @@ func TestIgnoreRulesIsolation(t *testing.T) {
 		repoDir := filepath.Join(workspace, "repo")
 		initGitRepo(t, workspace, repoDir)
 
-		writeTextFile(t, filepath.Join(repoDir, ".helmdocsignore"),
-			"charts/ignored-dir\ncharts/ignored-file/Chart.yaml\n")
+		ignoreRules := strings.Join([]string{
+			"/" + filepath.Join("charts", "ignored-dir"),
+			"/" + filepath.Join("charts", "ignored-file", "Chart.yaml"),
+		}, "\n") + "\n"
+		writeTextFile(t, filepath.Join(repoDir, ".helmdocsignore"), ignoreRules)
 
 		chartsDir := filepath.Join(repoDir, "charts")
 		writeChartFixture(t, filepath.Join(chartsDir, "active"), chartFixture{
