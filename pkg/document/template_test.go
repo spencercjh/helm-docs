@@ -30,21 +30,25 @@ func TestRenderDefaultWithBackticks(t *testing.T) {
 }
 
 func TestGetDocumentationTemplate(t *testing.T) {
-	tpl, err := getDocumentationTemplate(".", ".", []string{"testdata/nonexistent.md.gotmpl"})
+	tpl, optionalMissing, err := readDocumentationTemplates(".", ".", []string{"testdata/nonexistent.md.gotmpl"})
 
 	require.NoError(t, err)
-	assert.Equal(t, defaultDocumentationTemplate, tpl)
+	assert.False(t, optionalMissing)
+	assert.Equal(t, []documentationTemplateSource{{defaultDocumentationTemplateName, defaultDocumentationTemplate}}, tpl)
 }
 
 func TestGetDocumentationTemplate_LoadDefaultOnNotFound(t *testing.T) {
-	tpl, err := getDocumentationTemplate(".", ".", []string{
+	tpl, optionalMissing, err := readDocumentationTemplates(".", ".", []string{
 		"testdata/README.md.gotmpl",
 		"testdata/nonexistent.md.gotmpl",
 		"testdata/README2.md.gotmpl",
 	})
 
-	const expected = "hello\nhello again\n" + defaultDocumentationTemplate
-
 	require.NoError(t, err)
-	assert.Equal(t, expected, tpl)
+	assert.False(t, optionalMissing)
+	assert.Equal(t, []documentationTemplateSource{
+		{"testdata/README.md.gotmpl", "hello\n"},
+		{"testdata/README2.md.gotmpl", "hello again\n"},
+		{defaultDocumentationTemplateName, defaultDocumentationTemplate},
+	}, tpl)
 }
